@@ -9,9 +9,15 @@ export function useAuth() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        const token = await firebaseUser.getIdTokenResult(true)
-        const userRole = (token.claims.role as Role) ?? null
-        setUser(firebaseUser, userRole)
+        try {
+          const token = await firebaseUser.getIdTokenResult(true)
+          const userRole = (token.claims.role as Role) ?? null
+          setUser(firebaseUser, userRole)
+        } catch {
+          // Token invalid (e.g. emulator restarted) — sign out cleanly
+          await import('firebase/auth').then(({ signOut }) => signOut(auth))
+          clear()
+        }
       } else {
         clear()
       }

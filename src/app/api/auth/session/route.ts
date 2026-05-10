@@ -5,20 +5,22 @@ initAdminApp()
 export async function POST(req: NextRequest) {
   try {
     const { idToken } = await req.json()
+    // verifyIdToken works with both emulator and production
     const decoded = await getAuth().verifyIdToken(idToken)
     const role = (decoded.role as string) ?? ''
-    const expiresIn = 7 * 24 * 60 * 60 * 1000
-    const sessionCookie = await getAuth().createSessionCookie(idToken, { expiresIn })
     const res = NextResponse.json({ ok: true, role })
-    res.cookies.set('pmtool-session', sessionCookie, {
+    // Store the ID token as the session cookie — works in both emulator and prod
+    // In production this refreshes on each login (ID token is valid for 1h, re-login refreshes it)
+    res.cookies.set('pmtool-session', idToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60,
+      maxAge: 60 * 60, // 1 hour, matches Firebase ID token expiry
       path: '/',
     })
     return res
-  } catch {
+  } catch (err) {
+    console.error('[session] token verification failed:', err)
     return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
   }
 }
