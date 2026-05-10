@@ -1,0 +1,10 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // PHASE 0: All access denied until security rules are implemented in Phase 1
+    // DO NOT deploy these rules to production until Phase 1 RBAC is complete
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
