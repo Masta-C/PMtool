@@ -14,7 +14,7 @@
     "test:watch": "jest --watch",
     "format": "prettier --write .",
     "typecheck": "tsc --noEmit",
-    "seed": "NEXT_PUBLIC_USE_EMULATOR=true ts-node --esm scripts/seed.ts"
+    "seed": "NEXT_PUBLIC_USE_EMULATOR=true FIRESTORE_EMULATOR_HOST=localhost:8080 ts-node --esm scripts/seed.ts"
   },
   "dependencies": {
     "clsx": "^2.1.1",

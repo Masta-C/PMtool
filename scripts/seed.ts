@@ -1,14 +1,17 @@
-import * as admin from 'firebase-admin'
+// Set emulator env vars BEFORE any firebase-admin module loads
+// Dynamic imports below ensure this runs first
+process.env.FIRESTORE_EMULATOR_HOST = 'localhost:8080'
 
 if (process.env.NEXT_PUBLIC_USE_EMULATOR !== 'true') {
   console.error('SEED ABORTED: Not running against emulator. Set NEXT_PUBLIC_USE_EMULATOR=true')
   process.exit(1)
 }
 
-process.env.FIRESTORE_EMULATOR_HOST = 'localhost:8080'
+const { initializeApp } = await import('firebase-admin/app')
+const { getFirestore, FieldValue } = await import('firebase-admin/firestore')
 
-admin.initializeApp({ projectId: 'pmtool-3f8db' })
-const db = admin.firestore()
+initializeApp({ projectId: 'pmtool-3f8db' })
+const db = getFirestore()
 
 async function seed() {
   // Seed 13 workstations
@@ -23,7 +26,7 @@ async function seed() {
       passRules: [],
       assignedOperatorIds: [],
       isActive: true,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
     })
   }
   await wsBatch.commit()
@@ -43,7 +46,7 @@ async function seed() {
       ...user,
       shiftId: null,
       isActive: true,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
     })
   }
   await userBatch.commit()
@@ -51,40 +54,16 @@ async function seed() {
 
   // Seed 3 sample work orders
   const orders = [
-    {
-      id: 'WO-2026-00001',
-      status: 'pending',
-      productId: 'prod_placeholder',
-      currentWsId: 'ws_01',
-      assignedOperatorId: null,
-      reworkCount: 0,
-      priority: 'normal',
-    },
-    {
-      id: 'WO-2026-00002',
-      status: 'in_progress',
-      productId: 'prod_placeholder',
-      currentWsId: 'ws_01',
-      assignedOperatorId: 'test-operator',
-      reworkCount: 0,
-      priority: 'normal',
-    },
-    {
-      id: 'WO-2026-00003',
-      status: 'rework',
-      productId: 'prod_placeholder',
-      currentWsId: 'ws_02',
-      assignedOperatorId: null,
-      reworkCount: 1,
-      priority: 'normal',
-    },
+    { id: 'WO-2026-00001', status: 'pending', productId: 'prod_placeholder', currentWsId: 'ws_01', assignedOperatorId: null, reworkCount: 0, priority: 'normal' },
+    { id: 'WO-2026-00002', status: 'in_progress', productId: 'prod_placeholder', currentWsId: 'ws_01', assignedOperatorId: 'test-operator', reworkCount: 0, priority: 'normal' },
+    { id: 'WO-2026-00003', status: 'rework', productId: 'prod_placeholder', currentWsId: 'ws_02', assignedOperatorId: null, reworkCount: 1, priority: 'normal' },
   ]
   const orderBatch = db.batch()
   for (const order of orders) {
     const { id, ...data } = order
     orderBatch.set(db.collection('workOrders').doc(id), {
       ...data,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
     })
   }
   await orderBatch.commit()
