@@ -3,25 +3,32 @@
 @tailwind utilities;
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+  /* Brand palette — derived from CoinSpace dashboard reference */
+  --color-sidebar-bg:       #1c2235;
+  --color-sidebar-hover:    #252d45;
+  --color-sidebar-active:   #2a3454;
+  --color-sidebar-border:   #2e3a52;
+  --color-sidebar-text:     #9da8c3;
+  --color-sidebar-text-dim: #5a6480;
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-primary:          #4361ee;
+  --color-primary-hover:    #3451d1;
+
+  --color-content-bg:       #eef0f7;
+  --color-card-bg:          #ffffff;
+  --color-card-border:      #e4e7f0;
+
+  --color-success:          #22c55e;
+  --color-danger:           #ef4444;
+  --color-warning:          #f59e0b;
 }
 
 body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-content-bg);
+  font-family: Inter, Arial, Helvetica, sans-serif;
+  color: #1a1f36;
 }
 
 @layer utilities {
-  .text-balance {
-    text-wrap: balance;
-  }
+  .text-balance { text-wrap: balance; }
 }
