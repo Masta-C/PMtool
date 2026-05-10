@@ -3,5 +3,5 @@
   "firestore": { "host": "localhost", "port": 8080 },
   "functions": { "host": "localhost", "port": 5001 },
   "storage": { "host": "localhost", "port": 9199 },
-  "hosting": { "host": "localhost", "port": 5000 }
+  "hosting": { "host": "localhost", "port": 5002 }
 }
