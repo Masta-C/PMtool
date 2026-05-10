@@ -1,0 +1,40 @@
+name: CI — Lint, Type Check, Tests
+
+on:
+  push:
+    branches: [develop, 'feature/**']
+  pull_request:
+    branches: [develop]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Start Firebase Emulator
+        run: npx firebase emulators:exec --only auth,firestore,functions 'echo Emulators started' --project pmtool-3f8db
+
+      - name: Type Check
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit Tests
+        run: npm test -- --coverage
+        env:
+          NEXT_PUBLIC_USE_EMULATOR: 'true'
+          NEXT_PUBLIC_FIREBASE_PROJECT_ID: pmtool-3f8db
+          NEXT_PUBLIC_FIREBASE_API_KEY: ci-placeholder
+          NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: pmtool-3f8db.firebaseapp.com
+          NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: pmtool-3f8db.firebasestorage.app
+          NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: '000000000000'
+          NEXT_PUBLIC_FIREBASE_APP_ID: ci-placeholder
