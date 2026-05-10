@@ -1,4 +1,3 @@
-// TODO Phase 1 — Audit log
 export default function AuditLogPage() {
-  return <div>Audit Log</div>
+  return <div className="p-8"><h1 className="text-2xl font-bold text-gray-900">Audit Log</h1><p className="text-gray-500 mt-2">Phase 2 — coming soon</p></div>
 }
