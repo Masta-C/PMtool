@@ -1,10 +1,40 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // PHASE 0: All access denied until security rules are implemented in Phase 1
-    // DO NOT deploy these rules to production until Phase 1 RBAC is complete
-    match /{document=**} {
-      allow read, write: if false;
+    function isAuth() { return request.auth != null; }
+    function role() { return request.auth.token.role; }
+    function isSuperAdmin() { return isAuth() && role() == 'super_admin'; }
+    function isAdmin() { return isAuth() && role() in ['super_admin', 'admin', 'supervisor']; }
+    function isOperatorOrQA() { return isAuth() && role() in ['operator', 'qa']; }
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    match /users/{uid} {
+      allow read: if isAdmin() || request.auth.uid == uid;
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isSuperAdmin();
+    }
+    match /workstations/{wsId} {
+      allow read: if isAdmin() || (isOperatorOrQA() && wsId in userDoc().workstationIds);
+      allow write: if isAdmin();
+      allow delete: if isSuperAdmin();
+    }
+    match /workOrders/{orderId} {
+      allow read: if isAdmin() || (isOperatorOrQA() && resource.data.currentWsId in userDoc().workstationIds);
+      allow create: if isAdmin();
+      allow update: if isAdmin() || (isOperatorOrQA() && resource.data.currentWsId in userDoc().workstationIds);
+      allow delete: if isSuperAdmin();
+    }
+    match /products/{productId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+      allow delete: if isSuperAdmin();
+    }
+    match /auditLog/{logId} {
+      allow read: if isAdmin();
+      allow create: if isAuth();
+      allow update, delete: if false;
     }
   }
 }
