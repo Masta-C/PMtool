@@ -1,3 +1,4 @@
+export {}
 // Set emulator env vars BEFORE any firebase-admin module loads
 // Dynamic imports below ensure this runs first
 process.env.FIRESTORE_EMULATOR_HOST = 'localhost:8080'
