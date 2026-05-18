@@ -5,36 +5,75 @@ service cloud.firestore {
     function role() { return request.auth.token.role; }
     function isSuperAdmin() { return isAuth() && role() == 'super_admin'; }
     function isAdmin() { return isAuth() && role() in ['super_admin', 'admin', 'supervisor']; }
+    function isOperatorOrSupervisor() { return isAuth() && role() in ['operator', 'supervisor', 'super_admin', 'admin']; }
     function isOperatorOrQA() { return isAuth() && role() in ['operator', 'qa']; }
+    function isQAOnly() { return isAuth() && role() == 'qa'; }
     function userDoc() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
+
     match /users/{uid} {
       allow read: if isAdmin() || request.auth.uid == uid;
       allow create: if isAdmin();
       allow update: if isAdmin();
       allow delete: if isSuperAdmin();
     }
+
     match /workstations/{wsId} {
       allow read: if isAdmin() || (isOperatorOrQA() && wsId in userDoc().workstationIds);
       allow write: if isAdmin();
       allow delete: if isSuperAdmin();
     }
+
     match /workOrders/{orderId} {
       allow read: if isAdmin() || (isOperatorOrQA() && resource.data.currentWsId in userDoc().workstationIds);
       allow create: if isAdmin();
       allow update: if isAdmin() || (isOperatorOrQA() && resource.data.currentWsId in userDoc().workstationIds);
       allow delete: if isSuperAdmin();
     }
+
     match /products/{productId} {
       allow read: if isAdmin();
       allow write: if isAdmin();
       allow delete: if isSuperAdmin();
     }
-    match /auditLog/{logId} {
-      allow read: if isAdmin();
-      allow create: if isAuth();
+
+    // ---------------------------------------------------------------------------
+    // Meters — Phase 1
+    // QA gets read-only access; operators, supervisors, and admins can read+write.
+    // ---------------------------------------------------------------------------
+    match /meters/{meterId} {
+      allow read: if isAuth();
+      allow create: if isOperatorOrSupervisor();
+      allow update: if isOperatorOrSupervisor();
+      allow delete: if isSuperAdmin();
+    }
+
+    // Stage history subcollection — append-only for operators/supervisors, readable by all authenticated.
+    match /meters/{meterId}/stageHistory/{entryId} {
+      allow read: if isAuth();
+      allow create: if isOperatorOrSupervisor();
+      // No update or delete for any role — stage history is immutable.
       allow update, delete: if false;
+    }
+
+    // ---------------------------------------------------------------------------
+    // Audit Log — append-only for all authenticated users, no update/delete ever.
+    // ---------------------------------------------------------------------------
+    match /auditLog/{logId} {
+      allow read: if isAdmin() || isQAOnly();
+      allow create: if isAuth();
+      // Enforced append-only: no role can update or delete audit log entries.
+      allow update, delete: if false;
+    }
+
+    // ---------------------------------------------------------------------------
+    // Daily Sessions — admin/supervisor read+write; all other authenticated roles read-only.
+    // ---------------------------------------------------------------------------
+    match /dailySessions/{date} {
+      allow read: if isAuth();
+      allow create, update: if isAdmin();
+      allow delete: if isSuperAdmin();
     }
   }
 }
