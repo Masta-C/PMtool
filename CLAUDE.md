@@ -156,20 +156,25 @@ PMtool will be deployed as a PWA. This is decided. Architecture implications:
 - Seed scripts: `scripts/seed-auth.ts`, `scripts/seed.ts`
 - `pmtool-dev-ready` skill in `.claude/`
 
+### ✅ Completed in Phase 0 (session 1)
+- **CODEOWNERS**: `.github/CODEOWNERS` created — all PRs require `@chetan2321` approval
+- **Branch protection**: `develop` and `main` rulesets configured in GitHub UI — PR + CI + CODEOWNERS required
+- **PWA**: `@ducanh2912/next-pwa` installed, `next.config.mjs` wrapped, `public/manifest.json` created, placeholder icons added (192px, 512px), root layout updated with PWA metadata
+- **`emulator-data/` snapshot**: Exported from live seeded emulator — emulators now boot pre-loaded
+- **Functions admin SDK**: Aligned to `firebase-admin ^13` + `firebase-functions ^7` (matches root)
+- **Production deploy test gate**: `production-deploy.yml` now runs typecheck → lint → tests before build
+- **Environment approval gate**: GitHub environment `production` configured with required reviewer
+
 ### ❌ Missing / Not Yet Done
-- **PWA**: `@ducanh2912/next-pwa`, `public/manifest.json`, icons, service worker
-- **Firestore offline persistence**: `enableIndexedDbPersistence` not called yet
-- **CODEOWNERS**: `.github/CODEOWNERS` for PR approval gate (require Chetan's review)
-- **PR template**: `.github/PULL_REQUEST_TEMPLATE.md`
-- **Branch protection**: GitHub repo settings — require PR + passing CI before merge to `develop`/`main` (must be set in GitHub UI, not in code)
-- **`.env.example`**: No example env file for onboarding new developers
-- **Firestore indexes**: `firestore.indexes.json` is empty — add composite indexes as queries are built
-- **`emulator-data/` snapshot**: Directory is empty — run emulators, seed, then do a clean export to create a baseline snapshot
+- **Firestore offline persistence**: `enableIndexedDbPersistence` not called yet in `client.ts` — needed for PWA offline support on shop floor tablets
+- **Real PWA icons**: `public/icons/icon-192.png` and `icon-512.png` are placeholder solid-colour PNGs — replace with real branded icons before any user testing
+- **PR template**: `.github/PULL_REQUEST_TEMPLATE.md` not created yet
+- **`.env.example`**: No example env file for onboarding the second developer
+- **Firestore indexes**: `firestore.indexes.json` is empty — add composite indexes as queries are built in Phase 1
 - **Firestore rules tests**: `@firebase/rules-unit-testing` is installed but no test files exist yet
 - **Storage rules**: Currently locked (`allow read, write: if false`) — needs RBAC for product images/attachments in Phase 1
-- **Functions admin SDK version mismatch**: Root uses `firebase-admin ^13`, `functions/package.json` uses `^12` — align to `^13`
-- **Production deploy runs tests**: `production-deploy.yml` has no test/typecheck step before build — add it
-- **`.firebaserc`**: Not seen in root — verify it exists (`firebase use` will fail without it)
+- **Firebase emulator in CI**: Removed from `ci.yml` because `firebase-tools` isn't a project dependency. When integration tests are added, install `firebase-tools` as a devDependency and restore the emulator step using `emulators:exec`
+- **`.firebaserc`**: Verify it exists in the root (`firebase use` will fail without it)
 - **Dependabot/Renovate**: No automated dependency update config
 
 ---
