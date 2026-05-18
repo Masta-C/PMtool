@@ -16,10 +16,14 @@ export const app = getApps().length ? getApp() : initializeApp(firebaseConfig)
 export const auth = getAuth(app)
 export const db = getFirestore(app)
 export const storage = getStorage(app)
-let emulatorsConnected = false
-if (env.NEXT_PUBLIC_USE_EMULATOR && typeof window !== 'undefined' && !emulatorsConnected) {
-  emulatorsConnected = true
-  connectAuthEmulator(auth, 'http://localhost:9099', { disableWarnings: true })
-  connectFirestoreEmulator(db, 'localhost', 8080)
-  connectStorageEmulator(storage, 'localhost', 9199)
+if (env.NEXT_PUBLIC_USE_EMULATOR && typeof window !== 'undefined') {
+  // Use window flag so Fast Refresh module re-execution doesn't double-connect.
+  // Firebase SDK throws if connectAuthEmulator is called twice on the same instance.
+  const w = window as unknown as Record<string, unknown>
+  if (!w.__pmtoolEmulatorsConnected) {
+    w.__pmtoolEmulatorsConnected = true
+    connectAuthEmulator(auth, 'http://localhost:9099', { disableWarnings: true })
+    connectFirestoreEmulator(db, 'localhost', 8080)
+    connectStorageEmulator(storage, 'localhost', 9199)
+  }
 }
