@@ -140,6 +140,164 @@ interface ExcelModalState {
   errorMessage: string
 }
 
+interface OrderItem {
+  orderId: string
+  meters: number
+  date: string
+  operator: string
+}
+
+// ---------------------------------------------------------------------------
+// Mock order data helpers
+// ---------------------------------------------------------------------------
+
+const MOCK_OPERATORS = ['Ravi Kumar', 'Priya Sharma', 'Ankit Verma', 'Sunita Patel', 'Deepak Rao']
+
+function makeMockOrders(stageId: string, count: number, prefix: string): OrderItem[] {
+  const base = parseInt(stageId.replace('stage_', ''), 10) * 100
+  return Array.from({ length: count }, (_, i) => ({
+    orderId: `${prefix}-${String(base + i + 1).padStart(4, '0')}`,
+    meters: 50 + ((base + i * 7) % 200),
+    date: new Date(Date.now() - i * 86_400_000).toLocaleDateString('en-IN', {
+      day: '2-digit', month: 'short', year: 'numeric',
+    }),
+    operator: MOCK_OPERATORS[(base + i) % MOCK_OPERATORS.length],
+  }))
+}
+
+// ---------------------------------------------------------------------------
+// Order List Modal (Queue / Rework)
+// ---------------------------------------------------------------------------
+
+function OrderListModal({
+  open,
+  title,
+  stationName,
+  orders,
+  onClose,
+}: {
+  open: boolean
+  title: string
+  stationName: string
+  orders: OrderItem[]
+  onClose: () => void
+}) {
+  if (!open) return null
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+      <div
+        className="rounded-xl shadow-2xl w-full max-w-2xl mx-4 overflow-hidden flex flex-col"
+        style={{ background: 'var(--color-card-bg)', maxHeight: '80vh' }}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+      >
+        {/* Header */}
+        <div
+          className="px-6 py-4 border-b flex items-center justify-between shrink-0"
+          style={{ borderColor: 'var(--color-card-border)' }}
+        >
+          <div>
+            <h2 className="text-lg font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+              {title}
+            </h2>
+            <p className="text-sm mt-0.5" style={{ color: 'var(--color-text-secondary)' }}>
+              {stationName}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1 rounded transition-colors"
+            style={{ color: 'var(--color-text-secondary)' }}
+            aria-label="Close modal"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="px-6 py-4 overflow-y-auto flex-1">
+          {orders.length === 0 ? (
+            <p className="text-sm py-8 text-center" style={{ color: 'var(--color-text-secondary)' }}>
+              No orders to display.
+            </p>
+          ) : (
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr style={{ background: 'var(--color-content-bg)' }}>
+                  {['Order #', 'Meters', 'Date', 'Operator'].map(col => (
+                    <th
+                      key={col}
+                      className="text-left px-3 py-2 font-semibold border"
+                      style={{
+                        borderColor: 'var(--color-card-border)',
+                        color: 'var(--color-text-secondary)',
+                      }}
+                    >
+                      {col}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {orders.map((row, idx) => (
+                  <tr key={idx}>
+                    <td
+                      className="px-3 py-2 border font-mono font-medium"
+                      style={{ borderColor: 'var(--color-card-border)', color: 'var(--color-text-primary)' }}
+                    >
+                      {row.orderId}
+                    </td>
+                    <td
+                      className="px-3 py-2 border"
+                      style={{ borderColor: 'var(--color-card-border)', color: 'var(--color-text-primary)' }}
+                    >
+                      {row.meters}
+                    </td>
+                    <td
+                      className="px-3 py-2 border"
+                      style={{ borderColor: 'var(--color-card-border)', color: 'var(--color-text-secondary)' }}
+                    >
+                      {row.date}
+                    </td>
+                    <td
+                      className="px-3 py-2 border"
+                      style={{ borderColor: 'var(--color-card-border)', color: 'var(--color-text-secondary)' }}
+                    >
+                      {row.operator}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div
+          className="px-6 py-4 border-t flex justify-end shrink-0"
+          style={{ borderColor: 'var(--color-card-border)' }}
+        >
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-sm font-medium rounded-lg border transition-colors"
+            style={{
+              borderColor: 'var(--color-card-border)',
+              color: 'var(--color-text-primary)',
+              background: 'transparent',
+            }}
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -393,6 +551,8 @@ function StationCard({
   pendingMeters,
   onExcelUpload,
   onManualAdd,
+  onQueueBadgeClick,
+  onReworkBadgeClick,
 }: {
   stage: (typeof STAGES)[number]
   total: number
@@ -407,6 +567,8 @@ function StationCard({
   pendingMeters: ParsedMeter[]
   onExcelUpload: () => void
   onManualAdd: () => void
+  onQueueBadgeClick: () => void
+  onReworkBadgeClick: () => void
 }) {
   const { badgeClass, statusLabel } = getCardAccent(total, reworkCount)
   const isStation1 = stage.stageId === 'stage_01'
@@ -434,14 +596,27 @@ function StationCard({
         </div>
 
         {/* Queue count */}
-        <div className="flex items-baseline gap-2">
+        <div className="flex items-baseline gap-2 flex-wrap">
           <span className="text-3xl font-bold text-gray-900">{total}</span>
           <span className="text-sm text-gray-500">meter{total !== 1 ? 's' : ''} queued</span>
-          {reworkCount > 0 && (
-            <span className="text-xs font-medium text-yellow-700 bg-yellow-100 px-2 py-0.5 rounded-full ml-auto">
-              {reworkCount} rework
-            </span>
-          )}
+          <div className="ml-auto flex items-center gap-1.5 flex-wrap justify-end">
+            {total > 0 && (
+              <button
+                onClick={onQueueBadgeClick}
+                className="text-xs font-medium text-green-700 bg-green-100 px-2 py-0.5 rounded-full hover:bg-green-200 transition-colors cursor-pointer"
+              >
+                {total} queued
+              </button>
+            )}
+            {reworkCount > 0 && (
+              <button
+                onClick={onReworkBadgeClick}
+                className="text-xs font-medium text-yellow-700 bg-yellow-100 px-2 py-0.5 rounded-full hover:bg-yellow-200 transition-colors cursor-pointer"
+              >
+                {reworkCount} rework
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Operator dropdown */}
@@ -671,6 +846,36 @@ function WorkstationsPageInner() {
   // Manual add panel
   const [manualOpen, setManualOpen] = useState(false)
 
+  // Queue / Rework order modals
+  const [orderModal, setOrderModal] = useState<{
+    open: boolean
+    kind: 'queue' | 'rework'
+    stageId: string
+    orders: OrderItem[]
+  }>({ open: false, kind: 'queue', stageId: '', orders: [] })
+
+  const openQueueModal = useCallback((stageId: string, total: number) => {
+    setOrderModal({
+      open: true,
+      kind: 'queue',
+      stageId,
+      orders: makeMockOrders(stageId, total, 'ORD'),
+    })
+  }, [])
+
+  const openReworkModal = useCallback((stageId: string, reworkCount: number) => {
+    setOrderModal({
+      open: true,
+      kind: 'rework',
+      stageId,
+      orders: makeMockOrders(stageId, reworkCount, 'RWK'),
+    })
+  }, [])
+
+  const closeOrderModal = useCallback(() => {
+    setOrderModal(prev => ({ ...prev, open: false }))
+  }, [])
+
   // Hidden file input ref
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -792,6 +997,8 @@ function WorkstationsPageInner() {
                 pendingMeters={stage.stageId === 'stage_01' ? pendingMeters : []}
                 onExcelUpload={handleExcelUploadClick}
                 onManualAdd={() => setManualOpen(true)}
+                onQueueBadgeClick={() => openQueueModal(stage.stageId, count.total)}
+                onReworkBadgeClick={() => openReworkModal(stage.stageId, count.reworkCount)}
               />
             )
           })}
@@ -809,6 +1016,14 @@ function WorkstationsPageInner() {
         open={manualOpen}
         onAdd={handleManualAdd}
         onClose={() => setManualOpen(false)}
+      />
+
+      <OrderListModal
+        open={orderModal.open}
+        title={orderModal.kind === 'queue' ? 'Queued Orders' : 'Rework Orders'}
+        stationName={orderModal.stageId ? stationLabel(orderModal.stageId) : ''}
+        orders={orderModal.orders}
+        onClose={closeOrderModal}
       />
 
     </div>
