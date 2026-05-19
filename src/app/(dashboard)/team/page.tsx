@@ -220,8 +220,8 @@ export default function TeamPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-white">Team</h1>
-          <p className="text-sm mt-1" style={{ color: 'rgba(255,255,255,0.45)' }}>
+          <h1 className="text-2xl font-bold text-gray-900">Team</h1>
+          <p className="text-sm mt-1 text-gray-500">
             {loading ? 'Loading...' : `${users.length} account${users.length !== 1 ? 's' : ''}`}
           </p>
         </div>
@@ -289,7 +289,7 @@ export default function TeamPage() {
 
       {/* Team table */}
       {loading ? (
-        <p className="text-sm" style={{ color: 'rgba(255,255,255,0.4)' }}>Loading users…</p>
+        <p className="text-sm text-gray-400">Loading users…</p>
       ) : (
         <div
           className="rounded-xl border overflow-hidden"
@@ -302,7 +302,7 @@ export default function TeamPage() {
                   <th
                     key={h}
                     className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider"
-                    style={{ color: 'rgba(255,255,255,0.45)' }}
+                    style={{ color: '#6b7280' }}
                   >
                     {h}
                   </th>
@@ -317,13 +317,13 @@ export default function TeamPage() {
                     borderTop: i === 0 ? undefined : '1px solid var(--color-card-border)',
                   }}
                 >
-                  <td className="px-4 py-3 font-medium text-white">
+                  <td className="px-4 py-3 font-medium text-gray-900">
                     {u.displayName}
                     {u.uid === currentUser?.uid && (
-                      <span className="ml-2 text-xs" style={{ color: 'rgba(255,255,255,0.35)' }}>(You)</span>
+                      <span className="ml-2 text-xs text-gray-400">(You)</span>
                     )}
                   </td>
-                  <td className="px-4 py-3" style={{ color: 'rgba(255,255,255,0.6)' }}>{u.email}</td>
+                  <td className="px-4 py-3 text-gray-500">{u.email}</td>
                   <td className="px-4 py-3">
                     <span
                       className="px-2 py-0.5 rounded-full text-xs font-semibold"
@@ -335,7 +335,7 @@ export default function TeamPage() {
                       {ROLE_LABEL[u.role] ?? u.role}
                     </span>
                   </td>
-                  <td className="px-4 py-3 font-mono text-sm" style={{ color: 'rgba(255,255,255,0.45)' }}>
+                  <td className="px-4 py-3 font-mono text-sm text-gray-400">
                     {getWorkstationLabel(u.uid)}
                   </td>
                   <td className="px-4 py-3">
@@ -366,7 +366,7 @@ export default function TeamPage() {
                   <td
                     colSpan={5}
                     className="px-4 py-8 text-center text-sm"
-                    style={{ color: 'rgba(255,255,255,0.3)' }}
+                    style={{ color: '#9ca3af' }}
                   >
                     No users found.
                   </td>
@@ -384,13 +384,13 @@ export default function TeamPage() {
             className="rounded-xl shadow-2xl p-6 w-full max-w-md mx-4 border"
             style={{ background: 'var(--color-card-bg)', borderColor: 'var(--color-card-border)' }}
           >
-            <h2 className="text-lg font-semibold text-white mb-5">New User</h2>
+            <h2 className="text-lg font-semibold text-gray-900 mb-5">New User</h2>
             <form onSubmit={handleCreate} className="space-y-4">
 
               {/* Operator Name */}
               <div>
-                <label className="block text-sm font-medium mb-1.5" style={{ color: 'rgba(255,255,255,0.7)' }}>
-                  Operator Name <span className="text-red-400">*</span>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Operator Name <span className="text-red-500">*</span>
                 </label>
                 <input
                   required
@@ -398,7 +398,7 @@ export default function TeamPage() {
                   value={form.operatorName}
                   onChange={e => setForm(f => ({ ...f, operatorName: e.target.value }))}
                   placeholder="Full name"
-                  className="w-full rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 outline-none focus:ring-2"
+                  className="w-full rounded-lg px-3 py-2 text-sm text-gray-800 placeholder-gray-400 outline-none focus:ring-2"
                   style={{
                     background: 'var(--color-content-bg)',
                     border: '1px solid var(--color-card-border)',
@@ -410,8 +410,8 @@ export default function TeamPage() {
 
               {/* Email */}
               <div>
-                <label className="block text-sm font-medium mb-1.5" style={{ color: 'rgba(255,255,255,0.7)' }}>
-                  Email <span className="text-red-400">*</span>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Email <span className="text-red-500">*</span>
                 </label>
                 <input
                   required
@@ -419,7 +419,7 @@ export default function TeamPage() {
                   value={form.email}
                   onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
                   placeholder="user@example.com"
-                  className="w-full rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 outline-none focus:ring-2"
+                  className="w-full rounded-lg px-3 py-2 text-sm text-gray-800 placeholder-gray-400 outline-none focus:ring-2"
                   style={{
                     background: 'var(--color-content-bg)',
                     border: '1px solid var(--color-card-border)',
@@ -431,13 +431,13 @@ export default function TeamPage() {
 
               {/* Role */}
               <div>
-                <label className="block text-sm font-medium mb-1.5" style={{ color: 'rgba(255,255,255,0.7)' }}>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
                   Role
                 </label>
                 <select
                   value={form.role}
                   onChange={e => setForm(f => ({ ...f, role: e.target.value as Role }))}
-                  className="w-full rounded-lg px-3 py-2 text-sm text-white outline-none focus:ring-2"
+                  className="w-full rounded-lg px-3 py-2 text-sm text-gray-800 outline-none focus:ring-2"
                   style={{
                     background: 'var(--color-content-bg)',
                     border: '1px solid var(--color-card-border)',
@@ -452,24 +452,19 @@ export default function TeamPage() {
               </div>
 
               {/* Note about auto-generated fields */}
-              <p className="text-xs rounded-lg px-3 py-2" style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.4)' }}>
+              <p className="text-xs rounded-lg px-3 py-2 text-gray-500 bg-gray-50 border border-gray-200">
                 Op ID and temporary password will be auto-generated and shown once after the user is created.
               </p>
 
               {formError && (
-                <p className="text-sm text-red-400">{formError}</p>
+                <p className="text-sm text-red-500">{formError}</p>
               )}
 
               <div className="flex gap-3 justify-end pt-1">
                 <button
                   type="button"
                   onClick={() => setShowForm(false)}
-                  className="px-4 py-2 text-sm rounded-lg border transition-opacity hover:opacity-70"
-                  style={{
-                    background: 'transparent',
-                    borderColor: 'var(--color-card-border)',
-                    color: 'rgba(255,255,255,0.6)',
-                  }}
+                  className="px-4 py-2 text-sm text-gray-600 rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors"
                 >
                   Cancel
                 </button>
@@ -494,17 +489,17 @@ export default function TeamPage() {
             className="rounded-xl shadow-2xl p-6 w-full max-w-sm mx-4 border"
             style={{ background: 'var(--color-card-bg)', borderColor: 'var(--color-card-border)' }}
           >
-            <h2 className="text-lg font-semibold text-white mb-1">Edit User</h2>
-            <p className="text-sm mb-5" style={{ color: 'rgba(255,255,255,0.45)' }}>{editUser.displayName}</p>
+            <h2 className="text-lg font-semibold text-gray-900 mb-1">Edit User</h2>
+            <p className="text-sm text-gray-500 mb-5">{editUser.displayName}</p>
             <form onSubmit={handleEditSave} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium mb-1.5" style={{ color: 'rgba(255,255,255,0.7)' }}>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
                   Role
                 </label>
                 <select
                   value={editRole}
                   onChange={e => setEditRole(e.target.value as Role)}
-                  className="w-full rounded-lg px-3 py-2 text-sm text-white outline-none focus:ring-2"
+                  className="w-full rounded-lg px-3 py-2 text-sm text-gray-800 outline-none focus:ring-2"
                   style={{
                     background: 'var(--color-content-bg)',
                     border: '1px solid var(--color-card-border)',
@@ -517,17 +512,12 @@ export default function TeamPage() {
                   ))}
                 </select>
               </div>
-              {editError && <p className="text-sm text-red-400">{editError}</p>}
+              {editError && <p className="text-sm text-red-500">{editError}</p>}
               <div className="flex gap-3 justify-end pt-1">
                 <button
                   type="button"
                   onClick={() => setShowEditModal(false)}
-                  className="px-4 py-2 text-sm rounded-lg border transition-opacity hover:opacity-70"
-                  style={{
-                    background: 'transparent',
-                    borderColor: 'var(--color-card-border)',
-                    color: 'rgba(255,255,255,0.6)',
-                  }}
+                  className="px-4 py-2 text-sm text-gray-600 rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors"
                 >
                   Cancel
                 </button>

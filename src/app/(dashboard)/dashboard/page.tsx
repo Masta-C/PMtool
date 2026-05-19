@@ -768,7 +768,7 @@ export default function DashboardPage() {
                     ? { background: 'var(--color-primary)', color: '#fff', borderColor: 'var(--color-primary)' }
                     : { background: 'transparent', color: '#6b7280', borderColor: '#d1d5db' }}
                 >
-                  {v === 'day' ? 'Day' : 'Month'}
+                  {v === 'day' ? 'Week' : 'Month'}
                 </button>
               ))}
             </div>
@@ -811,7 +811,7 @@ export default function DashboardPage() {
                     ? { background: 'var(--color-primary)', color: '#fff', borderColor: 'var(--color-primary)' }
                     : { background: 'transparent', color: '#6b7280', borderColor: '#d1d5db' }}
                 >
-                  {v === 'day' ? 'Day' : 'Month'}
+                  {v === 'day' ? 'Week' : 'Month'}
                 </button>
               ))}
             </div>
@@ -837,7 +837,7 @@ export default function DashboardPage() {
           <div className="flex items-center justify-between gap-2">
             <div>
               <h2 className="text-sm font-semibold text-gray-700">Throughput</h2>
-              <p className="text-xs text-gray-400">Meters completed per {throughputView === 'day' ? 'hour' : 'day'}</p>
+              <p className="text-xs text-gray-400">Meters completed per {throughputView === 'day' ? 'day (this week)' : 'day (this month)'}</p>
             </div>
             <div className="flex gap-1 shrink-0">
               {(['day', 'month'] as const).map(v => (
@@ -849,7 +849,7 @@ export default function DashboardPage() {
                     ? { background: 'var(--color-primary)', color: '#fff', borderColor: 'var(--color-primary)' }
                     : { background: 'transparent', color: '#6b7280', borderColor: '#d1d5db' }}
                 >
-                  {v === 'day' ? 'Day' : 'Month'}
+                  {v === 'day' ? 'Week' : 'Month'}
                 </button>
               ))}
             </div>
