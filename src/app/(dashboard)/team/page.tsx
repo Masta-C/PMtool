@@ -4,26 +4,46 @@ import { useAuth } from '@/hooks/useAuth'
 import { useUsers } from '@/hooks/useUsers'
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog'
 import { createUserFn, setUserRoleFn, deleteUserFn } from '@/lib/firebase/functions'
+import { stationLabel } from '@/lib/stages'
 import type { Role, AppUser } from '@/types/user'
 
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+/** Roles available when creating / editing a user. super_admin is excluded
+ *  — those accounts are provisioned manually outside the app. */
 const ROLES: Role[] = ['admin', 'supervisor', 'operator', 'qa']
-const ROLE_BADGE: Record<Role, string> = {
-  admin: 'bg-blue-100 text-blue-700',
-  supervisor: 'bg-blue-100 text-blue-700', operator: 'bg-green-100 text-green-700', qa: 'bg-orange-100 text-orange-700',
+
+const ROLE_LABEL: Record<Role, string> = {
+  admin: 'Admin',
+  supervisor: 'Supervisor',
+  operator: 'Operator',
+  qa: 'QA',
 }
 
-interface UserFormData { displayName: string; email: string; password: string; role: Role; workstationIds: string }
-const EMPTY_FORM: UserFormData = { displayName: '', email: '', password: '', role: 'operator', workstationIds: '' }
+const ROLE_BADGE: Record<Role, { bg: string; color: string }> = {
+  admin:      { bg: '#1e3a5f', color: '#60a5fa' },
+  supervisor: { bg: '#1e3a5f', color: '#93c5fd' },
+  operator:   { bg: '#14362b', color: '#4ade80' },
+  qa:         { bg: '#3b2507', color: '#fb923c' },
+}
 
 const PASSWORD_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
 
+// ---------------------------------------------------------------------------
+// Utilities
+// ---------------------------------------------------------------------------
+
 function generatePassword(): string {
-  return Array.from({ length: 12 }, () =>
+  return Array.from({ length: 8 }, () =>
     PASSWORD_CHARS[Math.floor(Math.random() * PASSWORD_CHARS.length)]
   ).join('')
 }
 
-function getNextOperatorId(users: AppUser[]): string {
+/** Auto-generates the next Op ID in the format OP-0001, OP-0002, etc.
+ *  Scans existing users whose displayName matches the OP-XXXX pattern. */
+function getNextOpId(users: AppUser[]): string {
   const opPattern = /^OP-(\d+)$/
   let maxNum = 0
   for (const u of users) {
@@ -33,57 +53,97 @@ function getNextOperatorId(users: AppUser[]): string {
       if (n > maxNum) maxNum = n
     }
   }
-  const next = maxNum + 1
-  return `OP-${String(next).padStart(3, '0')}`
+  return `OP-${String(maxNum + 1).padStart(4, '0')}`
 }
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+interface CreateFormData {
+  operatorName: string
+  email: string
+  role: Role
+}
+
+interface PostSaveInfo {
+  opId: string
+  password: string
+  displayName: string
+}
+
+const EMPTY_FORM: CreateFormData = { operatorName: '', email: '', role: 'operator' }
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
 
 export default function TeamPage() {
   const { user: currentUser, role: currentRole } = useAuth()
   const { users, loading } = useUsers()
+
+  // Create form state
   const [showForm, setShowForm] = useState(false)
-  const [editUser, setEditUser] = useState<AppUser | null>(null)
-  const [form, setForm] = useState<UserFormData>(EMPTY_FORM)
+  const [form, setForm] = useState<CreateFormData>(EMPTY_FORM)
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
-  const [deleteTarget, setDeleteTarget] = useState<AppUser | null>(null)
-  const [deleting, setDeleting] = useState(false)
+
+  // Post-save reveal state (password + op ID shown once)
+  const [postSave, setPostSave] = useState<PostSaveInfo | null>(null)
   const [copied, setCopied] = useState(false)
 
+  // Edit role state
+  const [editUser, setEditUser] = useState<AppUser | null>(null)
+  const [editRole, setEditRole] = useState<Role>('operator')
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [editSubmitting, setEditSubmitting] = useState(false)
+  const [editError, setEditError] = useState<string | null>(null)
+
+  // Delete state
+  const [deleteTarget, setDeleteTarget] = useState<AppUser | null>(null)
+  const [deleting, setDeleting] = useState(false)
+
+  // ---------------------------------------------------------------------------
+  // Handlers — create
+  // ---------------------------------------------------------------------------
+
   const openCreate = useCallback(() => {
-    setEditUser(null)
+    setForm(EMPTY_FORM)
     setFormError(null)
-    const nextId = getNextOperatorId(users)
-    setForm({ ...EMPTY_FORM, displayName: nextId, password: generatePassword() })
+    setPostSave(null)
     setShowForm(true)
-  }, [users])
+  }, [])
 
-  function openEdit(u: AppUser) {
-    setEditUser(u)
-    setForm({ displayName: u.displayName, email: u.email, password: '', role: u.role, workstationIds: u.workstationIds.join(', ') })
+  async function handleCreate(e: React.FormEvent) {
+    e.preventDefault()
+    setSubmitting(true)
     setFormError(null)
-    setShowForm(true)
-  }
 
-  function handleRoleChange(newRole: Role) {
-    setForm(f => {
-      if (!editUser && newRole === 'operator') {
-        return { ...f, role: newRole, displayName: getNextOperatorId(users), password: generatePassword() }
-      }
-      if (!editUser && f.role === 'operator' && newRole !== 'operator') {
-        // switching away from operator — clear the auto-generated values
-        return { ...f, role: newRole, displayName: '', password: '' }
-      }
-      return { ...f, role: newRole }
-    })
-  }
+    const opId = getNextOpId(users)
+    const password = generatePassword()
 
-  function handleRegeneratePassword() {
-    setForm(f => ({ ...f, password: generatePassword() }))
-  }
-
-  async function handleCopy() {
     try {
-      await navigator.clipboard.writeText(form.password)
+      await createUserFn({
+        email: form.email,
+        password,
+        displayName: form.operatorName,
+        role: form.role,
+        workstationIds: [],
+      })
+      setShowForm(false)
+      setPostSave({ opId, password, displayName: form.operatorName })
+      setForm(EMPTY_FORM)
+    } catch (err: unknown) {
+      setFormError((err as { message?: string }).message ?? 'Failed to create user. Please try again.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  async function handleCopyPassword() {
+    if (!postSave) return
+    try {
+      await navigator.clipboard.writeText(postSave.password)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch {
@@ -91,152 +151,410 @@ export default function TeamPage() {
     }
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault(); setSubmitting(true); setFormError(null)
-    try {
-      const wsIds = form.workstationIds.split(',').map(s => s.trim()).filter(Boolean)
-      if (editUser) { await setUserRoleFn({ targetUid: editUser.uid, role: form.role }) }
-      else { await createUserFn({ email: form.email, password: form.password, displayName: form.displayName, role: form.role, workstationIds: wsIds }) }
-      setShowForm(false)
-    } catch (err: unknown) { setFormError((err as { message?: string }).message ?? 'Failed. Please try again.') }
-    finally { setSubmitting(false) }
+  // ---------------------------------------------------------------------------
+  // Handlers — edit role
+  // ---------------------------------------------------------------------------
+
+  function openEdit(u: AppUser) {
+    setEditUser(u)
+    setEditRole(u.role)
+    setEditError(null)
+    setShowEditModal(true)
   }
+
+  async function handleEditSave(e: React.FormEvent) {
+    e.preventDefault()
+    if (!editUser) return
+    setEditSubmitting(true)
+    setEditError(null)
+    try {
+      await setUserRoleFn({ targetUid: editUser.uid, role: editRole })
+      setShowEditModal(false)
+    } catch (err: unknown) {
+      setEditError((err as { message?: string }).message ?? 'Failed to update role.')
+    } finally {
+      setEditSubmitting(false)
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Handlers — delete
+  // ---------------------------------------------------------------------------
 
   async function handleDelete() {
-    if (!deleteTarget) return; setDeleting(true)
-    try { await deleteUserFn({ targetUid: deleteTarget.uid }); setDeleteTarget(null) }
-    catch (err: unknown) { alert((err as { message?: string }).message ?? 'Delete failed.') }
-    finally { setDeleting(false) }
+    if (!deleteTarget) return
+    setDeleting(true)
+    try {
+      await deleteUserFn({ targetUid: deleteTarget.uid })
+      setDeleteTarget(null)
+    } catch (err: unknown) {
+      alert((err as { message?: string }).message ?? 'Delete failed.')
+    } finally {
+      setDeleting(false)
+    }
   }
 
-  const needsWorkstations = form.role === 'operator' || form.role === 'qa'
-  const isOperatorCreate = !editUser && form.role === 'operator'
+  // ---------------------------------------------------------------------------
+  // Workstation column helper
+  //
+  // TODO: Replace stub with real-time Firestore query.
+  // Collection: `workstationAssignments` (or equivalent assignment collection)
+  // Query: where('operatorUid', '==', uid) to find which stageId the operator
+  // is currently assigned to, then call stationLabel(stageId) for display.
+  // For now all operators show '—' (unassigned).
+  // ---------------------------------------------------------------------------
+
+  function getWorkstationLabel(_uid: string): string {
+    // Stub — see TODO above
+    void stationLabel // stationLabel imported for future use
+    return '—'
+  }
+
+  // ---------------------------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------------------------
 
   return (
-    <div className="p-8">
+    <div className="min-h-screen p-8" style={{ background: 'var(--color-content-bg)' }}>
+
+      {/* Header */}
       <div className="flex items-center justify-between mb-6">
-        <div><h1 className="text-2xl font-bold text-gray-900">Team</h1><p className="text-sm text-gray-500 mt-1">{users.length} accounts</p></div>
-        <button onClick={openCreate} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">+ New User</button>
+        <div>
+          <h1 className="text-2xl font-bold text-white">Team</h1>
+          <p className="text-sm mt-1" style={{ color: 'rgba(255,255,255,0.45)' }}>
+            {loading ? 'Loading...' : `${users.length} account${users.length !== 1 ? 's' : ''}`}
+          </p>
+        </div>
+        {currentRole === 'admin' && (
+          <button
+            onClick={openCreate}
+            className="px-4 py-2 rounded-lg text-sm font-semibold text-white transition-opacity hover:opacity-80"
+            style={{ background: 'var(--color-primary)' }}
+          >
+            + New User
+          </button>
+        )}
       </div>
-      {loading ? <p className="text-gray-400 text-sm">Loading users...</p> : (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+
+      {/* Post-save password reveal */}
+      {postSave && (
+        <div
+          className="mb-6 rounded-xl p-5 border"
+          style={{ background: '#0d2b1a', borderColor: '#22c55e' }}
+        >
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-sm font-semibold text-green-400 mb-1">User created successfully</p>
+              <p className="text-xs mb-3" style={{ color: 'rgba(255,255,255,0.55)' }}>
+                Save the password now — it will not be shown again.
+              </p>
+              <div className="flex flex-wrap gap-6">
+                <div>
+                  <span className="block text-xs font-medium text-green-500 mb-0.5">Operator Name</span>
+                  <span className="text-sm font-mono text-white">{postSave.displayName}</span>
+                </div>
+                <div>
+                  <span className="block text-xs font-medium text-green-500 mb-0.5">Op ID (auto-generated)</span>
+                  <span className="text-sm font-mono text-white">{postSave.opId}</span>
+                </div>
+                <div>
+                  <span className="block text-xs font-medium text-green-500 mb-0.5">Temporary Password</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-mono tracking-widest text-white">{postSave.password}</span>
+                    <button
+                      onClick={handleCopyPassword}
+                      className="px-2 py-0.5 rounded text-xs font-medium border transition-colors"
+                      style={
+                        copied
+                          ? { background: '#14532d', borderColor: '#22c55e', color: '#4ade80' }
+                          : { background: 'transparent', borderColor: '#4ade80', color: '#4ade80' }
+                      }
+                    >
+                      {copied ? 'Copied!' : 'Copy'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={() => setPostSave(null)}
+              className="text-green-600 hover:text-green-400 text-lg leading-none flex-shrink-0"
+              aria-label="Dismiss"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Team table */}
+      {loading ? (
+        <p className="text-sm" style={{ color: 'rgba(255,255,255,0.4)' }}>Loading users…</p>
+      ) : (
+        <div
+          className="rounded-xl border overflow-hidden"
+          style={{ background: 'var(--color-card-bg)', borderColor: 'var(--color-card-border)' }}
+        >
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>
-                {['Name','Email','Role','Workstations','Actions'].map(h => <th key={h} className="text-left px-4 py-3 font-medium text-gray-600">{h}</th>)}
+            <thead>
+              <tr style={{ borderBottom: '1px solid var(--color-card-border)' }}>
+                {['Name', 'Email', 'Role', 'Workstation', 'Actions'].map(h => (
+                  <th
+                    key={h}
+                    className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider"
+                    style={{ color: 'rgba(255,255,255,0.45)' }}
+                  >
+                    {h}
+                  </th>
+                ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
-              {users.map(u => (
-                <tr key={u.uid} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 font-medium text-gray-900">{u.displayName}{u.uid === currentUser?.uid && <span className="ml-2 text-xs text-gray-400">(You)</span>}</td>
-                  <td className="px-4 py-3 text-gray-600">{u.email}</td>
-                  <td className="px-4 py-3"><span className={`px-2 py-0.5 rounded-full text-xs font-medium ${ROLE_BADGE[u.role]}`}>{u.role.replace('_',' ')}</span></td>
-                  <td className="px-4 py-3 text-gray-600">{u.workstationIds?.join(', ') || '—'}</td>
+            <tbody>
+              {users.map((u, i) => (
+                <tr
+                  key={u.uid}
+                  style={{
+                    borderTop: i === 0 ? undefined : '1px solid var(--color-card-border)',
+                  }}
+                >
+                  <td className="px-4 py-3 font-medium text-white">
+                    {u.displayName}
+                    {u.uid === currentUser?.uid && (
+                      <span className="ml-2 text-xs" style={{ color: 'rgba(255,255,255,0.35)' }}>(You)</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3" style={{ color: 'rgba(255,255,255,0.6)' }}>{u.email}</td>
                   <td className="px-4 py-3">
-                    <div className="flex gap-2">
-                      <button onClick={() => openEdit(u)} className="text-blue-600 hover:text-blue-800 text-xs font-medium">Edit</button>
-                      {currentRole === 'admin' && u.uid !== currentUser?.uid && <button onClick={() => setDeleteTarget(u)} className="text-red-600 hover:text-red-800 text-xs font-medium">Delete</button>}
+                    <span
+                      className="px-2 py-0.5 rounded-full text-xs font-semibold"
+                      style={{
+                        background: ROLE_BADGE[u.role]?.bg ?? '#1e2a3a',
+                        color: ROLE_BADGE[u.role]?.color ?? '#94a3b8',
+                      }}
+                    >
+                      {ROLE_LABEL[u.role] ?? u.role}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 font-mono text-sm" style={{ color: 'rgba(255,255,255,0.45)' }}>
+                    {getWorkstationLabel(u.uid)}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex gap-3">
+                      {currentRole === 'admin' && (
+                        <button
+                          onClick={() => openEdit(u)}
+                          className="text-xs font-medium transition-opacity hover:opacity-70"
+                          style={{ color: 'var(--color-primary)' }}
+                        >
+                          Edit
+                        </button>
+                      )}
+                      {currentRole === 'admin' && u.uid !== currentUser?.uid && (
+                        <button
+                          onClick={() => setDeleteTarget(u)}
+                          className="text-xs font-medium text-red-400 hover:text-red-300 transition-colors"
+                        >
+                          Delete
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
               ))}
+              {users.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={5}
+                    className="px-4 py-8 text-center text-sm"
+                    style={{ color: 'rgba(255,255,255,0.3)' }}
+                  >
+                    No users found.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
       )}
+
+      {/* Create user modal */}
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-md mx-4">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">{editUser ? 'Edit User' : 'New User'}</h2>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              {!editUser && (<>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    {isOperatorCreate ? 'Operator ID' : 'Full Name'}
-                    {isOperatorCreate && <span className="ml-1 text-xs font-normal text-gray-400">(auto-generated, editable)</span>}
-                  </label>
-                  <input
-                    required
-                    value={form.displayName}
-                    onChange={e => setForm(f => ({ ...f, displayName: e.target.value }))}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder={isOperatorCreate ? 'OP-001' : 'Full name'}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                  <input type="email" required value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Password
-                    {isOperatorCreate && <span className="ml-1 text-xs font-normal text-gray-400">(auto-generated)</span>}
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      required
-                      minLength={6}
-                      value={form.password}
-                      onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
-                      className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono tracking-wide"
-                      placeholder="Min 6 characters"
-                    />
-                    {isOperatorCreate && (
-                      <button
-                        type="button"
-                        onClick={handleCopy}
-                        title="Copy password"
-                        className={`flex-shrink-0 px-3 py-2 rounded-lg text-xs font-medium border transition-colors ${
-                          copied
-                            ? 'border-green-400 bg-green-50 text-green-700'
-                            : 'border-gray-300 bg-white text-gray-600 hover:bg-gray-50'
-                        }`}
-                      >
-                        {copied ? 'Copied!' : (
-                          <span className="flex items-center gap-1">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-4 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                            </svg>
-                            Copy
-                          </span>
-                        )}
-                      </button>
-                    )}
-                  </div>
-                  {isOperatorCreate && (
-                    <button
-                      type="button"
-                      onClick={handleRegeneratePassword}
-                      className="mt-1.5 text-xs text-blue-600 hover:text-blue-800 font-medium"
-                    >
-                      ↺ Regenerate
-                    </button>
-                  )}
-                </div>
-              </>)}
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div
+            className="rounded-xl shadow-2xl p-6 w-full max-w-md mx-4 border"
+            style={{ background: 'var(--color-card-bg)', borderColor: 'var(--color-card-border)' }}
+          >
+            <h2 className="text-lg font-semibold text-white mb-5">New User</h2>
+            <form onSubmit={handleCreate} className="space-y-4">
+
+              {/* Operator Name */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: 'rgba(255,255,255,0.7)' }}>
+                  Operator Name <span className="text-red-400">*</span>
+                </label>
+                <input
+                  required
+                  type="text"
+                  value={form.operatorName}
+                  onChange={e => setForm(f => ({ ...f, operatorName: e.target.value }))}
+                  placeholder="Full name"
+                  className="w-full rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 outline-none focus:ring-2"
+                  style={{
+                    background: 'var(--color-content-bg)',
+                    border: '1px solid var(--color-card-border)',
+                    // @ts-expect-error -- CSS variable for ring color
+                    '--tw-ring-color': 'var(--color-primary)',
+                  }}
+                />
+              </div>
+
+              {/* Email */}
+              <div>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: 'rgba(255,255,255,0.7)' }}>
+                  Email <span className="text-red-400">*</span>
+                </label>
+                <input
+                  required
+                  type="email"
+                  value={form.email}
+                  onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                  placeholder="user@example.com"
+                  className="w-full rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 outline-none focus:ring-2"
+                  style={{
+                    background: 'var(--color-content-bg)',
+                    border: '1px solid var(--color-card-border)',
+                    // @ts-expect-error -- CSS variable for ring color
+                    '--tw-ring-color': 'var(--color-primary)',
+                  }}
+                />
+              </div>
+
+              {/* Role */}
+              <div>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: 'rgba(255,255,255,0.7)' }}>
+                  Role
+                </label>
                 <select
                   value={form.role}
-                  onChange={e => handleRoleChange(e.target.value as Role)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  onChange={e => setForm(f => ({ ...f, role: e.target.value as Role }))}
+                  className="w-full rounded-lg px-3 py-2 text-sm text-white outline-none focus:ring-2"
+                  style={{
+                    background: 'var(--color-content-bg)',
+                    border: '1px solid var(--color-card-border)',
+                    // @ts-expect-error -- CSS variable for ring color
+                    '--tw-ring-color': 'var(--color-primary)',
+                  }}
                 >
-                  {ROLES.map(r => <option key={r} value={r}>{r.replace('_',' ')}</option>)}
+                  {ROLES.map(r => (
+                    <option key={r} value={r}>{ROLE_LABEL[r]}</option>
+                  ))}
                 </select>
               </div>
-              {needsWorkstations && <div><label className="block text-sm font-medium text-gray-700 mb-1">Assigned Workstations</label><input value={form.workstationIds} onChange={e => setForm(f => ({ ...f, workstationIds: e.target.value }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="ws_01, ws_02" /><p className="text-xs text-gray-400 mt-1">Comma-separated workstation IDs</p></div>}
-              {formError && <p className="text-sm text-red-600">{formError}</p>}
-              <div className="flex gap-3 justify-end pt-2">
-                <button type="button" onClick={() => setShowForm(false)} className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
-                <button type="submit" disabled={submitting} className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium">{submitting ? 'Saving...' : editUser ? 'Save Changes' : 'Create User'}</button>
+
+              {/* Note about auto-generated fields */}
+              <p className="text-xs rounded-lg px-3 py-2" style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.4)' }}>
+                Op ID and temporary password will be auto-generated and shown once after the user is created.
+              </p>
+
+              {formError && (
+                <p className="text-sm text-red-400">{formError}</p>
+              )}
+
+              <div className="flex gap-3 justify-end pt-1">
+                <button
+                  type="button"
+                  onClick={() => setShowForm(false)}
+                  className="px-4 py-2 text-sm rounded-lg border transition-opacity hover:opacity-70"
+                  style={{
+                    background: 'transparent',
+                    borderColor: 'var(--color-card-border)',
+                    color: 'rgba(255,255,255,0.6)',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="px-4 py-2 text-sm font-semibold text-white rounded-lg disabled:opacity-50 transition-opacity hover:opacity-80"
+                  style={{ background: 'var(--color-primary)' }}
+                >
+                  {submitting ? 'Creating…' : 'Create User'}
+                </button>
               </div>
             </form>
           </div>
         </div>
       )}
-      <ConfirmDialog open={!!deleteTarget} title="Delete User" message={`Delete ${deleteTarget?.displayName ?? 'this user'}? Their account will be permanently removed and they will lose access immediately.`} confirmLabel={deleting ? 'Deleting...' : 'Delete User'} dangerous onConfirm={handleDelete} onCancel={() => setDeleteTarget(null)} />
+
+      {/* Edit role modal */}
+      {showEditModal && editUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div
+            className="rounded-xl shadow-2xl p-6 w-full max-w-sm mx-4 border"
+            style={{ background: 'var(--color-card-bg)', borderColor: 'var(--color-card-border)' }}
+          >
+            <h2 className="text-lg font-semibold text-white mb-1">Edit User</h2>
+            <p className="text-sm mb-5" style={{ color: 'rgba(255,255,255,0.45)' }}>{editUser.displayName}</p>
+            <form onSubmit={handleEditSave} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: 'rgba(255,255,255,0.7)' }}>
+                  Role
+                </label>
+                <select
+                  value={editRole}
+                  onChange={e => setEditRole(e.target.value as Role)}
+                  className="w-full rounded-lg px-3 py-2 text-sm text-white outline-none focus:ring-2"
+                  style={{
+                    background: 'var(--color-content-bg)',
+                    border: '1px solid var(--color-card-border)',
+                    // @ts-expect-error -- CSS variable for ring color
+                    '--tw-ring-color': 'var(--color-primary)',
+                  }}
+                >
+                  {ROLES.map(r => (
+                    <option key={r} value={r}>{ROLE_LABEL[r]}</option>
+                  ))}
+                </select>
+              </div>
+              {editError && <p className="text-sm text-red-400">{editError}</p>}
+              <div className="flex gap-3 justify-end pt-1">
+                <button
+                  type="button"
+                  onClick={() => setShowEditModal(false)}
+                  className="px-4 py-2 text-sm rounded-lg border transition-opacity hover:opacity-70"
+                  style={{
+                    background: 'transparent',
+                    borderColor: 'var(--color-card-border)',
+                    color: 'rgba(255,255,255,0.6)',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={editSubmitting}
+                  className="px-4 py-2 text-sm font-semibold text-white rounded-lg disabled:opacity-50 transition-opacity hover:opacity-80"
+                  style={{ background: 'var(--color-primary)' }}
+                >
+                  {editSubmitting ? 'Saving…' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete confirm dialog */}
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title="Delete User"
+        message={`Delete ${deleteTarget?.displayName ?? 'this user'}? Their account will be permanently removed and they will lose access immediately.`}
+        confirmLabel={deleting ? 'Deleting…' : 'Delete User'}
+        dangerous
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   )
 }
