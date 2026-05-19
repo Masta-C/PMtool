@@ -12,9 +12,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   if (loading) return <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--color-content-bg)' }}><div className="text-gray-400 text-sm">Loading...</div></div>
   if (!user) return null
   return (
-    <div className="flex min-h-screen" style={{ background: 'var(--color-content-bg)' }}>
+    <div className="flex h-screen overflow-hidden" style={{ background: 'var(--color-content-bg)' }}>
       <Sidebar />
-      <main className="flex-1 overflow-auto">{children}</main>
+      <main className="flex-1 overflow-y-auto">{children}</main>
     </div>
   )
 }

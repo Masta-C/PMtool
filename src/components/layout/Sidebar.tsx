@@ -26,7 +26,7 @@ export function Sidebar() {
   const visibleItems = NAV_ITEMS.filter(item => role && item.roles.includes(role))
 
   return (
-    <aside className="w-56 min-h-screen flex flex-col" style={{ background: 'var(--color-sidebar-bg)' }}>
+    <aside className="w-56 h-screen flex flex-col flex-shrink-0" style={{ background: 'var(--color-sidebar-bg)' }}>
       {/* Brand */}
       <div className="px-5 py-5 border-b" style={{ borderColor: 'var(--color-sidebar-border)' }}>
         <p className="text-white text-base font-bold tracking-wide">PMtool</p>
