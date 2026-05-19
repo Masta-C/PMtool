@@ -4,6 +4,8 @@ import { useState, useRef, useCallback } from 'react'
 import { useAuth } from '@/hooks/useAuth'
 import { useUsers } from '@/hooks/useUsers'
 import { stationLabel } from '@/lib/stages'
+import { useMachineStatuses } from '@/hooks/useMachineStatuses'
+import type { MachineStatus } from '@/types/workstation'
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -216,6 +218,56 @@ function DateRangeSelector({
 }
 
 // ---------------------------------------------------------------------------
+// Machine Status Selector
+// ---------------------------------------------------------------------------
+
+const MACHINE_STATUS_OPTIONS: { value: MachineStatus; label: string; color: string }[] = [
+  { value: 'green',  label: 'Running',  color: '#22c55e' },
+  { value: 'yellow', label: 'Break',    color: '#eab308' },
+  { value: 'red',    label: 'Down',     color: '#ef4444' },
+]
+
+function MachineStatusSelector({
+  stationId,
+  status,
+  onStatusChange,
+}: {
+  stationId: string
+  status: MachineStatus | null
+  onStatusChange: (stationId: string, s: MachineStatus | null) => void
+}) {
+  return (
+    <div>
+      <label className="block text-xs font-medium text-gray-500 mb-1">Machine Status</label>
+      <div className="flex gap-2">
+        {MACHINE_STATUS_OPTIONS.map(opt => {
+          const active = status === opt.value
+          return (
+            <button
+              key={opt.value}
+              onClick={() => onStatusChange(stationId, active ? null : opt.value)}
+              title={opt.label}
+              className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold rounded-lg px-2 py-1.5 border transition-all"
+              style={
+                active
+                  ? { background: opt.color, color: '#fff', borderColor: opt.color }
+                  : { background: 'transparent', color: '#6b7280', borderColor: '#d1d5db' }
+              }
+            >
+              <span
+                className="w-2 h-2 rounded-full shrink-0"
+                style={{ background: opt.color }}
+              />
+              {opt.label}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Excel Upload Modal
 // ---------------------------------------------------------------------------
 
@@ -336,6 +388,8 @@ function StationCard({
   operatorOptions,
   dateRange,
   onDateRangeChange,
+  machineStatus,
+  onStatusChange,
   pendingMeters,
   onExcelUpload,
   onManualAdd,
@@ -348,17 +402,25 @@ function StationCard({
   operatorOptions: OperatorOption[]
   dateRange: DateRange | null
   onDateRangeChange: (stationId: string, range: DateRange) => void
+  machineStatus: MachineStatus | null
+  onStatusChange: (stationId: string, s: MachineStatus | null) => void
   pendingMeters: ParsedMeter[]
   onExcelUpload: () => void
   onManualAdd: () => void
 }) {
-  const { borderClass, badgeClass, statusLabel } = getCardAccent(total, reworkCount)
+  const { badgeClass, statusLabel } = getCardAccent(total, reworkCount)
   const isStation1 = stage.stageId === 'stage_01'
+
+  const accentColor =
+    machineStatus === 'green'  ? '#22c55e' :
+    machineStatus === 'yellow' ? '#eab308' :
+    machineStatus === 'red'    ? '#ef4444' :
+    'var(--color-card-border)'
 
   return (
     <div
-      className={`bg-white rounded-xl shadow-sm ${borderClass} overflow-hidden flex flex-col`}
-      style={{ borderColor: undefined }}
+      className="bg-white rounded-xl shadow-sm overflow-hidden flex flex-col"
+      style={{ borderLeft: `4px solid ${accentColor}` }}
     >
       <div className="p-5 flex flex-col gap-4 flex-1">
         {/* Header row */}
@@ -407,6 +469,13 @@ function StationCard({
             onChange={onDateRangeChange}
           />
         )}
+
+        {/* Machine status — always visible, operator sets from their station */}
+        <MachineStatusSelector
+          stationId={stage.stationId}
+          status={machineStatus}
+          onStatusChange={onStatusChange}
+        />
 
         {/* Station 1 extra actions */}
         {isStation1 && (
@@ -574,6 +643,7 @@ export default function WorkstationsPage() {
 function WorkstationsPageInner() {
   const { counts } = useStationCounts()
   const { operatorOptions } = useOperatorOptions()
+  const { statuses: machineStatuses, updateStatus } = useMachineStatuses(STAGES.map(s => s.stationId))
   const today = new Date()
 
   // Date range per station (keyed by stationId), loaded from localStorage on mount
@@ -717,6 +787,8 @@ function WorkstationsPageInner() {
                 operatorOptions={operatorOptions}
                 dateRange={dateRanges[stage.stationId] ?? null}
                 onDateRangeChange={handleDateRangeChange}
+                machineStatus={machineStatuses[stage.stationId] ?? null}
+                onStatusChange={updateStatus}
                 pendingMeters={stage.stageId === 'stage_01' ? pendingMeters : []}
                 onExcelUpload={handleExcelUploadClick}
                 onManualAdd={() => setManualOpen(true)}
