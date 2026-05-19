@@ -10,12 +10,15 @@ export function useAuth() {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         try {
-          const token = await firebaseUser.getIdTokenResult(true)
+          // No force-refresh — login already forced a fresh token with role claims.
+          // Force-refreshing here makes every page load hit the emulator and can
+          // intermittently fail, which incorrectly signs the user out.
+          const token = await firebaseUser.getIdTokenResult()
           const userRole = (token.claims.role as Role) ?? null
           setUser(firebaseUser, userRole)
         } catch {
-          // Token invalid (e.g. emulator restarted) — sign out cleanly
-          await import('firebase/auth').then(({ signOut }) => signOut(auth))
+          // Couldn't read claims — clear local state but don't call signOut,
+          // which would also wipe the server session cookie unexpectedly.
           clear()
         }
       } else {

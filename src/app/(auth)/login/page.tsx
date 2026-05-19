@@ -5,8 +5,8 @@ import { useRouter } from 'next/navigation'
 import { auth } from '@/lib/firebase/client'
 import type { Role } from '@/types/user'
 const ROLE_REDIRECT: Record<Role, string> = {
-  super_admin: '/dashboard', admin: '/dashboard', supervisor: '/dashboard',
-  operator: '/queue', qa: '/queue',
+  admin: '/dashboard', supervisor: '/dashboard',
+  operator: '/dashboard', qa: '/dashboard',
 }
 export default function LoginPage() {
   const [email, setEmail] = useState('')

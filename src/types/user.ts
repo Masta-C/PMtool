@@ -1,4 +1,4 @@
-export type Role = 'super_admin' | 'admin' | 'supervisor' | 'operator' | 'qa'
+export type Role = 'admin' | 'supervisor' | 'operator' | 'qa'
 export interface AppUser {
   uid: string
   email: string

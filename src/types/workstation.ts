@@ -1,2 +1,15 @@
-// TODO Phase 1 — Workstation, PassRule types
-export {}
+/** Operator-driven machine status displayed on station cards. */
+export type MachineStatus = 'green' | 'yellow' | 'red'
+
+export interface StageParameter {
+  parameterId: string
+  name: string
+}
+
+export interface StageDefinition {
+  stageId: string           // 'stage_01' … 'stage_13'
+  stationId: string         // 'ws_01' … 'ws_13'
+  name: string
+  parameters: StageParameter[]
+  isTamperTestStage?: boolean  // true for stage_08 only
+}

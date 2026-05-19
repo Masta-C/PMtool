@@ -1,6 +1,5 @@
 // TODO Phase 1 — constants
 export const ROLES = {
-  SUPER_ADMIN: 'super_admin',
   ADMIN: 'admin',
   SUPERVISOR: 'supervisor',
   OPERATOR: 'operator',
