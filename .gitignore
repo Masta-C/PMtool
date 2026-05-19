@@ -4,7 +4,10 @@
 /build
 
 # Node
-node_modules/
+/node_modules
+/.pnp
+.pnp.js
+.yarn/install-state.gz
 /functions/node_modules
 
 # Environment files — NEVER commit these
@@ -27,10 +30,11 @@ yarn-error.log*
 
 # OS
 .DS_Store
+*.pem
 Thumbs.db
 
 # Testing
-coverage/
+/coverage
 
 # Misc
 .vercel

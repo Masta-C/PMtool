@@ -1,0 +1,47 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Helper: check role from custom claims
+    function role() {
+      return request.auth.token.role;
+    }
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdminOrAbove() {
+      return role() in ['super_admin', 'admin'];
+    }
+
+    function isSupervisorOrAbove() {
+      return role() in ['super_admin', 'admin', 'supervisor'];
+    }
+
+    // Product images — uploaded by admin+, readable by all authenticated users
+    match /products/{productId}/{fileName} {
+      allow read: if isAuthenticated();
+      allow write: if isAdminOrAbove();
+    }
+
+    // Work order attachments — uploaded by operators/QA, readable by all authenticated users
+    match /workOrders/{orderId}/{fileName} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && role() in ['super_admin', 'admin', 'supervisor', 'operator', 'qa'];
+      allow delete: if isSupervisorOrAbove();
+    }
+
+    // User avatars — each user can upload their own, all authenticated can read
+    match /users/{uid}/{fileName} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && request.auth.uid == uid;
+      allow delete: if isAuthenticated() && (request.auth.uid == uid || isAdminOrAbove());
+    }
+
+    // Deny everything else
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
