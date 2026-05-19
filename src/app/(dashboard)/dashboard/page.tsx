@@ -595,8 +595,9 @@ export default function DashboardPage() {
   const [lastRefreshed, setLastRefreshed] = useState<Date>(() => new Date())
   const [timeAgoLabel, setTimeAgoLabel] = useState<string>('just now')
   const [refreshKey, setRefreshKey] = useState(0)
-  // Default to Month view per spec (Issue #17)
   const [throughputView, setThroughputView] = useState<ThroughputView>('month')
+  const [stationFailureView, setStationFailureView] = useState<'day' | 'month'>('day')
+  const [operatorFailureView, setOperatorFailureView] = useState<'day' | 'month'>('day')
 
   // Update the "N min ago" label every minute — does NOT re-fetch data
   useEffect(() => {
@@ -752,8 +753,26 @@ export default function DashboardPage() {
           className="rounded-xl p-5 shadow-sm flex flex-col gap-3"
           style={{ background: 'var(--color-card-bg)', border: '1px solid var(--color-card-border)' }}
         >
-          <h2 className="text-sm font-semibold text-gray-700">Station vs Failure Rate</h2>
-          <p className="text-xs text-gray-400 -mt-2">Top 5 stations by rework tags originated — corrected reworks included</p>
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <h2 className="text-sm font-semibold text-gray-700">Station vs Failure Rate</h2>
+              <p className="text-xs text-gray-400">Rework tags originated — corrected reworks included</p>
+            </div>
+            <div className="flex gap-1 shrink-0">
+              {(['day', 'month'] as const).map(v => (
+                <button
+                  key={v}
+                  onClick={() => setStationFailureView(v)}
+                  className="text-xs px-2 py-1 rounded font-medium border transition-all"
+                  style={stationFailureView === v
+                    ? { background: 'var(--color-primary)', color: '#fff', borderColor: 'var(--color-primary)' }
+                    : { background: 'transparent', color: '#6b7280', borderColor: '#d1d5db' }}
+                >
+                  {v === 'day' ? 'Day' : 'Month'}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="flex flex-col gap-1.5">
             {stationFailureRates.map(st => (
               <HorizontalBar
@@ -766,64 +785,79 @@ export default function DashboardPage() {
               />
             ))}
           </div>
-
-          {/* Table view as secondary reference */}
-          <div className="mt-2 border-t border-gray-100 pt-3">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="text-gray-400">
-                  <th className="text-left font-medium pb-1">Station</th>
-                  <th className="text-right font-medium pb-1">Failure %</th>
-                </tr>
-              </thead>
-              <tbody>
-                {stationFailureRates.map(st => (
-                  <tr key={st.stageId} className="border-t border-gray-50">
-                    <td className="py-1 text-gray-600">{stationLabel(st.stageId)}</td>
-                    <td
-                      className="py-1 text-right font-semibold"
-                      style={{ color: failureRateColor(st.failureRate) }}
-                    >
-                      {st.failureRate}%
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
         </div>
       </div>
 
-      {/* Row 3 — Committed vs Completed progress bar */}
-      <div
-        className="rounded-xl p-6 shadow-sm flex flex-col gap-4"
-        style={{ background: 'var(--color-card-bg)', border: '1px solid var(--color-card-border)' }}
-      >
-        <div className="flex items-center justify-between flex-wrap gap-2">
-          <h2 className="text-sm font-semibold text-gray-700">Committed vs Completed</h2>
-          <span className="text-xs text-gray-400">
-            {completed} of {committed} meters completed today ({completedPct}%)
-          </span>
-        </div>
+      {/* Row 3 — Operator vs Failure Rate + Throughput line graph */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
-        {/* Large progress bar */}
-        <div className="w-full bg-gray-100 rounded-full h-8 overflow-hidden">
-          <div
-            className="h-8 rounded-full flex items-center justify-end pr-4 transition-all duration-700"
-            style={{
-              width: `${Math.max(completedPct, 2)}%`,
-              background: 'linear-gradient(90deg, #22c55e 0%, #16a34a 100%)',
-            }}
-          >
-            <span className="text-white text-sm font-bold">{completedPct}%</span>
+        {/* Operator vs Failure Rate */}
+        <div
+          className="rounded-xl p-5 shadow-sm flex flex-col gap-3"
+          style={{ background: 'var(--color-card-bg)', border: '1px solid var(--color-card-border)' }}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <h2 className="text-sm font-semibold text-gray-700">Operator vs Failure Rate</h2>
+              <p className="text-xs text-gray-400">Raw failed count — corrected reworks included</p>
+            </div>
+            <div className="flex gap-1 shrink-0">
+              {(['day', 'month'] as const).map(v => (
+                <button
+                  key={v}
+                  onClick={() => setOperatorFailureView(v)}
+                  className="text-xs px-2 py-1 rounded font-medium border transition-all"
+                  style={operatorFailureView === v
+                    ? { background: 'var(--color-primary)', color: '#fff', borderColor: 'var(--color-primary)' }
+                    : { background: 'transparent', color: '#6b7280', borderColor: '#d1d5db' }}
+                >
+                  {v === 'day' ? 'Day' : 'Month'}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            {MOCK_OPERATOR_FAILURE.map(op => (
+              <HorizontalBar
+                key={op.operatorId}
+                label={op.name}
+                value={op.failureRate}
+                maxValue={Math.max(...MOCK_OPERATOR_FAILURE.map(o => o.failureRate), 1)}
+                color={failureRateColor(op.failureRate)}
+              />
+            ))}
           </div>
         </div>
 
-        {/* Labels */}
-        <div className="flex justify-between text-xs text-gray-400">
-          <span>0</span>
-          <span className="font-medium text-gray-600">{completed} completed</span>
-          <span>{committed} committed</span>
+        {/* Throughput line graph */}
+        <div
+          className="rounded-xl p-5 shadow-sm flex flex-col gap-3"
+          style={{ background: 'var(--color-card-bg)', border: '1px solid var(--color-card-border)' }}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <h2 className="text-sm font-semibold text-gray-700">Throughput</h2>
+              <p className="text-xs text-gray-400">Meters completed per {throughputView === 'day' ? 'hour' : 'day'}</p>
+            </div>
+            <div className="flex gap-1 shrink-0">
+              {(['day', 'month'] as const).map(v => (
+                <button
+                  key={v}
+                  onClick={() => setThroughputView(v)}
+                  className="text-xs px-2 py-1 rounded font-medium border transition-all"
+                  style={throughputView === v
+                    ? { background: 'var(--color-primary)', color: '#fff', borderColor: 'var(--color-primary)' }
+                    : { background: 'transparent', color: '#6b7280', borderColor: '#d1d5db' }}
+                >
+                  {v === 'day' ? 'Day' : 'Month'}
+                </button>
+              ))}
+            </div>
+          </div>
+          <ThroughputChart
+            points={throughputView === 'month' ? MOCK_THROUGHPUT_MONTH : MOCK_THROUGHPUT_DAY}
+            lineColor="var(--color-primary)"
+          />
         </div>
       </div>
 
