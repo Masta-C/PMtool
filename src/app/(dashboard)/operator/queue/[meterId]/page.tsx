@@ -1159,22 +1159,20 @@ export default function MeterParameterFormPage() {
         </div>
 
         {/* Tag as Rework — danger secondary */}
-        {hasUpstreamStages ? (
-          <button
-            onClick={() => setReworkModalOpen(true)}
-            disabled={!canSubmit || submitting || reworkSubmitting}
-            className="w-full rounded-xl text-sm font-semibold border transition-all"
-            style={{
-              minHeight: '48px',
-              background: canSubmit && !submitting && !reworkSubmitting ? '#fef2f2' : 'transparent',
-              color: canSubmit && !submitting && !reworkSubmitting ? '#dc2626' : '#d1d5db',
-              borderColor: canSubmit && !submitting && !reworkSubmitting ? '#fca5a5' : '#e5e7eb',
-              cursor: canSubmit && !submitting && !reworkSubmitting ? 'pointer' : 'not-allowed',
-            }}
-          >
-            {reworkSubmitting ? 'Routing…' : 'Tag as Rework'}
-          </button>
-        ) : null}
+        <button
+          onClick={() => hasUpstreamStages && setReworkModalOpen(true)}
+          disabled={!hasUpstreamStages || !canSubmit || submitting || reworkSubmitting}
+          className="w-full rounded-xl text-sm font-semibold border transition-all"
+          style={{
+            minHeight: '48px',
+            background: hasUpstreamStages && canSubmit && !submitting && !reworkSubmitting ? '#fef2f2' : 'transparent',
+            color: hasUpstreamStages && canSubmit && !submitting && !reworkSubmitting ? '#dc2626' : '#d1d5db',
+            borderColor: hasUpstreamStages && canSubmit && !submitting && !reworkSubmitting ? '#fca5a5' : '#e5e7eb',
+            cursor: hasUpstreamStages && canSubmit && !submitting && !reworkSubmitting ? 'pointer' : 'not-allowed',
+          }}
+        >
+          {reworkSubmitting ? 'Routing…' : hasUpstreamStages ? 'Tag as Rework' : 'Tag as Rework (N/A — first station)'}
+        </button>
 
         {/* Save Draft — lowest priority, text link style */}
         <button

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { doc, getDoc, collection, query, where, onSnapshot } from 'firebase/firestore'
+import { doc, getDoc, collection, collectionGroup, query, where, onSnapshot } from 'firebase/firestore'
 import { db } from '@/lib/firebase/client'
 import { useAuth } from '@/hooks/useAuth'
 import { subscribeMachineStatuses, setMachineStatus, subscribeMeterQueue, subscribeStageHistory } from '@/lib/firebase/firestore'
@@ -172,16 +172,19 @@ function useOperatorStats(
     })
   }, [stageId])
 
-  // Completed today: stageHistory entries submitted by this operator today.
-  // TODO: Replace with collectionGroup('stageHistory') query once composite
-  // index (operatorId + submittedAt + overallResult) is deployed.
-  // Stub: keeps count at 0 until Firestore indexes are ready.
+  // Completed today: stageHistory entries submitted by this operator since midnight
   useEffect(() => {
-    if (!operatorId || !stageId) return
-    // intentional no-op stub — avoids unused-var lint errors
-    void getTodayStart()
-    setCounts(prev => ({ ...prev, completedToday: 0 }))
-  }, [operatorId, stageId])
+    if (!operatorId) return
+    const todayStart = getTodayStart().toISOString()
+    const q = query(
+      collectionGroup(db, 'stageHistory'),
+      where('operatorId', '==', operatorId),
+      where('submittedAt', '>=', todayStart)
+    )
+    return onSnapshot(q, snap => {
+      setCounts(prev => ({ ...prev, completedToday: snap.size }))
+    })
+  }, [operatorId])
 
   return counts
 }

@@ -99,6 +99,38 @@ async function seed() {
   })
   console.log('✓ Seeded meter-test-001 (stage_01, queued)')
 
+  // Meter 6 — stage_01, queued (arrived 45 min ago)
+  const meter6Ref = db.collection('meters').doc('meter-test-006')
+  await meter6Ref.set({
+    serialNumber: 'SN-2026-00006',
+    meterType: 'Three Phase 10-60A',
+    status: 'queued',
+    currentStageId: 'stage_01',
+    assignedOperatorId: null,
+    draftResults: null,
+    createdAt: hoursAgo(1),
+    completedAt: null,
+    reworkCount: 0,
+    taggedFromStageId: null,
+  })
+  console.log('✓ Seeded meter-test-006 (stage_01, queued)')
+
+  // Meter 7 — stage_01, queued (arrived 15 min ago)
+  const meter7Ref = db.collection('meters').doc('meter-test-007')
+  await meter7Ref.set({
+    serialNumber: 'SN-2026-00007',
+    meterType: 'Single Phase 5-30A',
+    status: 'queued',
+    currentStageId: 'stage_01',
+    assignedOperatorId: null,
+    draftResults: null,
+    createdAt: hoursAgo(0),
+    completedAt: null,
+    reworkCount: 0,
+    taggedFromStageId: null,
+  })
+  console.log('✓ Seeded meter-test-007 (stage_01, queued)')
+
   // Meter 2 — stage_05, queued (passed WS1–WS4 cleanly)
   const meter2Ref = db.collection('meters').doc('meter-test-002')
   await meter2Ref.set({
