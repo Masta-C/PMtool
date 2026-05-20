@@ -40,3 +40,11 @@ Thumbs.db
 .vercel
 *.tsbuildinfo
 next-env.d.ts
+
+# Claude Code internal state
+.claude/
+
+# PWA generated files (produced by next-pwa at build time)
+/public/sw.js
+/public/swe-worker-*.js
+/public/workbox-*.js
