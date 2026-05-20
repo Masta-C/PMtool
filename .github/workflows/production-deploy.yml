@@ -43,9 +43,12 @@ jobs:
       - name: Write service account credentials
         env:
           SA_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_PROD }}
-        run: echo "$SA_KEY" > /tmp/sa.json
+        run: |
+          echo "$SA_KEY" > /tmp/sa.json
+          python3 -c "import json; json.load(open('/tmp/sa.json')); print('JSON valid')"
+
+      - name: Authenticate gcloud
+        run: gcloud auth activate-service-account --key-file=/tmp/sa.json
 
       - name: Deploy to Firebase (hosting + rules + indexes + functions)
         run: firebase deploy --only hosting,firestore:rules,firestore:indexes,functions --project pmtool-3f8db --force
-        env:
-          GOOGLE_APPLICATION_CREDENTIALS: /tmp/sa.json
