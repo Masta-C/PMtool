@@ -20,6 +20,10 @@ service cloud.firestore {
     match /workstations/{wsId} {
       allow read: if isAdmin() || (isOperatorOrQA() && wsId in userDoc().workstationIds);
       allow write: if isAdmin();
+      // Operators can update only machineStatus on their assigned workstation
+      allow update: if isOperatorOrAbove()
+        && wsId in userDoc().workstationIds
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['machineStatus']);
       allow delete: if isSuperAdmin();
     }
     match /workOrders/{orderId} {
