@@ -1136,39 +1136,21 @@ export default function MeterParameterFormPage() {
           borderTop: '1px solid var(--color-card-border)',
         }}
       >
-        {/* Save Draft */}
-        <button
-          onClick={handleSaveDraft}
-          disabled={saveDraftStatus === 'saving'}
-          className="w-full rounded-xl text-sm font-semibold border transition-all"
-          style={{
-            minHeight: '48px',
-            background: 'transparent',
-            color: saveDraftStatus === 'saved' ? '#16a34a' : 'var(--color-primary)',
-            borderColor: saveDraftStatus === 'saved' ? '#16a34a' : 'var(--color-primary)',
-            opacity: saveDraftStatus === 'saving' ? 0.6 : 1,
-          }}
-        >
-          {saveDraftLabel}
-        </button>
-
-        {/* Tag as Done */}
+        {/* Tag as Done — primary CTA */}
         <div className="flex flex-col gap-1">
           <button
             onClick={handleTagAsDone}
             disabled={!canTagAsDone || submitting}
             className="w-full rounded-xl text-sm font-semibold text-white transition-all"
             style={{
-              minHeight: '48px',
-              background: canTagAsDone && !submitting ? '#16a34a' : '#9ca3af',
-              opacity: canTagAsDone && !submitting ? 1 : 0.6,
+              minHeight: '52px',
+              background: canTagAsDone && !submitting ? '#16a34a' : '#d1d5db',
+              color: canTagAsDone && !submitting ? '#fff' : '#9ca3af',
               cursor: canTagAsDone && !submitting ? 'pointer' : 'not-allowed',
             }}
           >
             {submitting ? 'Submitting…' : 'Tag as Done'}
           </button>
-
-          {/* Threshold warning — shown only when threshold is exceeded */}
           {thresholdExceeded && (
             <p className="text-xs text-red-600 text-center px-2">
               Too many failures — meter must be sent for rework
@@ -1176,7 +1158,7 @@ export default function MeterParameterFormPage() {
           )}
         </div>
 
-        {/* Tag as Rework */}
+        {/* Tag as Rework — danger secondary */}
         {hasUpstreamStages ? (
           <button
             onClick={() => setReworkModalOpen(true)}
@@ -1184,31 +1166,29 @@ export default function MeterParameterFormPage() {
             className="w-full rounded-xl text-sm font-semibold border transition-all"
             style={{
               minHeight: '48px',
-              background: 'transparent',
-              color: canSubmit && !submitting && !reworkSubmitting ? '#dc2626' : '#9ca3af',
-              borderColor: canSubmit && !submitting && !reworkSubmitting ? '#dc2626' : '#e5e7eb',
+              background: canSubmit && !submitting && !reworkSubmitting ? '#fef2f2' : 'transparent',
+              color: canSubmit && !submitting && !reworkSubmitting ? '#dc2626' : '#d1d5db',
+              borderColor: canSubmit && !submitting && !reworkSubmitting ? '#fca5a5' : '#e5e7eb',
               cursor: canSubmit && !submitting && !reworkSubmitting ? 'pointer' : 'not-allowed',
-              opacity: canSubmit && !submitting && !reworkSubmitting ? 1 : 0.6,
             }}
           >
             {reworkSubmitting ? 'Routing…' : 'Tag as Rework'}
           </button>
-        ) : (
-          <button
-            disabled
-            className="w-full rounded-xl text-sm font-medium border"
-            style={{
-              minHeight: '48px',
-              background: 'transparent',
-              color: '#9ca3af',
-              borderColor: '#e5e7eb',
-              cursor: 'not-allowed',
-            }}
-            title="No upstream stations available"
-          >
-            Tag as Rework (no upstream stations)
-          </button>
-        )}
+        ) : null}
+
+        {/* Save Draft — lowest priority, text link style */}
+        <button
+          onClick={handleSaveDraft}
+          disabled={saveDraftStatus === 'saving'}
+          className="w-full text-sm font-medium transition-all py-2"
+          style={{
+            background: 'transparent',
+            color: saveDraftStatus === 'saved' ? '#16a34a' : '#9ca3af',
+            opacity: saveDraftStatus === 'saving' ? 0.5 : 1,
+          }}
+        >
+          {saveDraftLabel}
+        </button>
       </div>
     </div>
   )
