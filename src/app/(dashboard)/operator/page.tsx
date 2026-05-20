@@ -1,13 +1,15 @@
 'use client'
 
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { doc, getDoc, collection, query, where, onSnapshot } from 'firebase/firestore'
 import { db } from '@/lib/firebase/client'
 import { useAuth } from '@/hooks/useAuth'
-import { subscribeMachineStatuses, setMachineStatus } from '@/lib/firebase/firestore'
+import { subscribeMachineStatuses, setMachineStatus, subscribeMeterQueue, subscribeStageHistory } from '@/lib/firebase/firestore'
 import { stationLabel } from '@/lib/stages'
+import { AddMeterModal } from '@/components/operator/AddMeterModal'
 import type { MachineStatus } from '@/types/workstation'
+import type { Meter, StageHistoryEntry } from '@/types/meter'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -185,6 +187,112 @@ function useOperatorStats(
 }
 
 // ---------------------------------------------------------------------------
+// Queue hooks + components (inlined so home screen shows queue directly)
+// ---------------------------------------------------------------------------
+
+function formatTimeAgo(isoString: string): string {
+  const diffMs = Date.now() - new Date(isoString).getTime()
+  const totalMinutes = Math.floor(diffMs / 60_000)
+  if (totalMinutes < 1) return 'just now'
+  const h = Math.floor(totalMinutes / 60)
+  const m = totalMinutes % 60
+  if (h > 0) return `${h}h ${m}m ago`
+  return `${m}m ago`
+}
+
+function useMeterQueue(stageId: string | null): Meter[] {
+  const [meters, setMeters] = useState<Meter[]>([])
+  useEffect(() => {
+    if (!stageId) return
+    return subscribeMeterQueue(stageId, ['queued', 'rework'], setMeters)
+  }, [stageId])
+  return meters
+}
+
+function useMeterFailures(meterId: string): string[] {
+  const [failedNames, setFailedNames] = useState<string[]>([])
+  useEffect(() => {
+    return subscribeStageHistory(meterId, (entries: StageHistoryEntry[]) => {
+      const seen = new Set<string>()
+      const names: string[] = []
+      for (const entry of entries) {
+        for (const param of entry.parameters) {
+          if (!param.passed && !seen.has(param.parameterId)) {
+            seen.add(param.parameterId)
+            names.push(param.name)
+          }
+        }
+      }
+      setFailedNames(names)
+    })
+  }, [meterId])
+  return failedNames
+}
+
+function QueueCardFailures({ meterId }: { meterId: string }) {
+  const failedNames = useMeterFailures(meterId)
+  if (failedNames.length === 0) return null
+  return (
+    <div className="flex flex-wrap gap-1 mt-1.5">
+      {failedNames.map(name => (
+        <span key={name} className="px-2 py-0.5 rounded-full text-xs font-medium" style={{ background: '#f3f4f6', color: '#4b5563' }}>
+          {name}
+        </span>
+      ))}
+    </div>
+  )
+}
+
+function TimeAgo({ isoString }: { isoString: string }) {
+  const [label, setLabel] = useState(() => formatTimeAgo(isoString))
+  const ref = useRef<ReturnType<typeof setInterval> | null>(null)
+  useEffect(() => {
+    setLabel(formatTimeAgo(isoString))
+    ref.current = setInterval(() => setLabel(formatTimeAgo(isoString)), 60_000)
+    return () => { if (ref.current !== null) clearInterval(ref.current) }
+  }, [isoString])
+  return <span className="text-xs text-gray-400 whitespace-nowrap">{label}</span>
+}
+
+function QueueCard({ meter, isInteractive, onClick }: { meter: Meter; isInteractive: boolean; onClick: (id: string) => void }) {
+  const isRework = meter.status === 'rework'
+  return (
+    <button
+      onClick={() => isInteractive && onClick(meter.id)}
+      className="w-full text-left rounded-2xl shadow-sm transition-all"
+      style={{
+        background: 'var(--color-card-bg)',
+        border: '1px solid var(--color-card-border)',
+        minHeight: '76px',
+        opacity: isInteractive ? 1 : 0.6,
+        cursor: isInteractive ? 'pointer' : 'not-allowed',
+      }}
+    >
+      <div className="px-4 py-4 flex items-start gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-base font-bold text-gray-900 leading-tight">{meter.serialNumber}</span>
+            {isRework && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-red-600 text-white">
+                REWORK <span className="font-normal opacity-90">· Attempt {meter.reworkCount + 1}</span>
+              </span>
+            )}
+          </div>
+          <p className="text-sm text-gray-500 mt-0.5 leading-snug">{meter.meterType}</p>
+          <QueueCardFailures meterId={meter.id} />
+        </div>
+        <div className="flex flex-col items-end gap-2 shrink-0 pt-0.5">
+          <TimeAgo isoString={meter.createdAt} />
+          <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </div>
+      </div>
+    </button>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // StatusHeader component
 // ---------------------------------------------------------------------------
 
@@ -262,94 +370,16 @@ function StatusHeader({ currentStatus, elapsedSeconds, onStatusChange }: StatusH
 // StatCard component
 // ---------------------------------------------------------------------------
 
-function StatCard({
-  label,
-  value,
-  accentColor,
-}: {
+function StatCard({ label, value, accentColor, small }: {
   label: string
-  value: number
+  value: number | string
   accentColor: string
+  small?: boolean
 }) {
   return (
-    <div
-      className="rounded-xl p-4 flex flex-col gap-1 shadow-sm flex-1"
-      style={{
-        background: 'var(--color-card-bg)',
-        border: '1px solid var(--color-card-border)',
-      }}
-    >
-      <span className="text-2xl font-bold" style={{ color: accentColor }}>
-        {value}
-      </span>
-      <span className="text-xs font-medium text-gray-600 leading-snug">{label}</span>
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// StationCard component
-// ---------------------------------------------------------------------------
-
-function StationCard({
-  stageId,
-  pending,
-  reworks,
-  isInteractive,
-  onClick,
-}: {
-  stageId: string
-  pending: number
-  reworks: number
-  isInteractive: boolean
-  onClick: () => void
-}) {
-  const label = stationLabel(stageId)
-
-  return (
-    <div
-      className="rounded-2xl overflow-hidden shadow-sm transition-all"
-      style={{
-        background: 'var(--color-card-bg)',
-        border: '1px solid var(--color-card-border)',
-        opacity: isInteractive ? 1 : 0.5,
-      }}
-    >
-      <button
-        onClick={onClick}
-        disabled={!isInteractive}
-        className="w-full p-5 flex items-center gap-4 text-left transition-colors"
-        style={{
-          cursor: isInteractive ? 'pointer' : 'not-allowed',
-          minHeight: '80px',
-          background: 'transparent',
-        }}
-      >
-        {/* Station info */}
-        <div className="flex-1 min-w-0">
-          <p className="font-bold text-gray-900 text-base leading-snug truncate">{label}</p>
-          <p className="text-sm text-gray-500 mt-0.5">
-            {pending} pending · {reworks} rework
-          </p>
-        </div>
-
-        {/* Chevron */}
-        <svg
-          className="w-5 h-5 text-gray-400 shrink-0"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          aria-hidden="true"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-        </svg>
-      </button>
-
-      {!isInteractive && (
-        <p className="px-5 pb-4 text-xs text-gray-400">
-          Set status to Active to process meters
-        </p>
-      )}
+    <div className="rounded-xl p-3 flex flex-col gap-0.5 shadow-sm flex-1" style={{ background: 'var(--color-card-bg)', border: '1px solid var(--color-card-border)' }}>
+      <span className={`font-bold leading-tight truncate ${small ? 'text-sm' : 'text-xl'}`} style={{ color: accentColor }}>{value}</span>
+      <span className="text-xs font-medium text-gray-500 leading-snug">{label}</span>
     </div>
   )
 }
@@ -398,115 +428,103 @@ export default function OperatorPage() {
   }, [statusSetAt])
 
   const stats = useOperatorStats(stageId, user?.uid)
+  const meters = useMeterQueue(stageId)
+  const [addModalOpen, setAddModalOpen] = useState(false)
 
-  const handleStatusChange = useCallback(
-    async (newStatus: OperatorStatus) => {
-      if (!stationId) return
-      const ms = operatorStatusToMachineStatus(newStatus)
-      setStatusSetAt(new Date())
-      setElapsedSeconds(0)
-      await setStatus(ms)
-    },
-    [stationId, setStatus]
-  )
+  const handleStatusChange = useCallback(async (newStatus: OperatorStatus) => {
+    if (!stationId) return
+    setStatusSetAt(new Date())
+    setElapsedSeconds(0)
+    await setStatus(operatorStatusToMachineStatus(newStatus))
+  }, [stationId, setStatus])
 
-  const handleStationCardClick = useCallback(() => {
-    router.push('/operator/queue')
+  const handleMeterClick = useCallback((meterId: string) => {
+    router.push(`/operator/queue/${meterId}`)
   }, [router])
 
-  // Loading states
-  if (authLoading || stationLoading) {
-    return (
-      <div className="p-10 text-gray-400 text-sm">Loading…</div>
-    )
-  }
-
-  // Gate: only operator can see this page
-  if (role && role !== 'operator') {
-    return null
-  }
+  if (authLoading || stationLoading) return <div className="p-10 text-gray-400 text-sm">Loading…</div>
+  if (role && role !== 'operator') return null
 
   const isActive = operatorStatus === 'active'
-  const hasStatus = operatorStatus !== null
-  const isGated = !hasStatus
+  const isGated = operatorStatus === null
+  const wsLabel = stageId ? stationLabel(stageId) : null
 
   return (
-    <div
-      className="min-h-screen flex flex-col"
-      style={{ background: 'var(--color-content-bg)' }}
-    >
-      {/* 1. Persistent status header */}
-      <StatusHeader
-        currentStatus={operatorStatus}
-        elapsedSeconds={elapsedSeconds}
-        onStatusChange={handleStatusChange}
-      />
+    <div className="min-h-screen flex flex-col" style={{ background: 'var(--color-content-bg)' }}>
+      {/* Status header */}
+      <StatusHeader currentStatus={operatorStatus} elapsedSeconds={elapsedSeconds} onStatusChange={handleStatusChange} />
+
+      {/* Gate message */}
+      {isGated && (
+        <div className="mx-4 mt-4 rounded-xl px-5 py-3 text-center text-sm font-medium text-gray-500 max-w-2xl mx-auto w-full"
+          style={{ background: 'var(--color-card-bg)', border: '1px solid var(--color-card-border)' }}>
+          Select a status above to begin your shift
+        </div>
+      )}
 
       {/* Body */}
-      <div className="flex-1 px-4 py-5 flex flex-col gap-5 max-w-2xl mx-auto w-full">
+      <div className="flex-1 px-4 pt-4 pb-8 flex flex-col gap-4 max-w-2xl mx-auto w-full"
+        style={{ opacity: isGated ? 0.4 : 1, pointerEvents: (isGated ? 'none' : 'auto') as React.CSSProperties['pointerEvents'] }}>
 
-        {/* 2. Status gate message */}
-        {isGated && (
-          <div
-            className="rounded-xl px-5 py-4 text-center text-sm font-medium text-gray-500"
-            style={{
-              background: 'var(--color-card-bg)',
-              border: '1px solid var(--color-card-border)',
-            }}
-          >
-            Select a status above to begin your shift
-          </div>
-        )}
-
-        {/* Gated content */}
-        <div
-          className="flex flex-col gap-5 transition-all"
-          style={{
-            opacity: isGated ? 0.4 : 1,
-            pointerEvents: (isGated ? 'none' : 'auto') as React.CSSProperties['pointerEvents'],
-          }}
-        >
-          {/* 3. Stat cards */}
-          <div className="flex gap-3">
-            <StatCard
-              label="Completed Today"
-              value={stats.completedToday}
-              accentColor="#22c55e"
-            />
-            <StatCard
-              label="Pending in Queue"
-              value={stats.pendingInQueue}
-              accentColor="var(--color-primary)"
-            />
-            <StatCard
-              label="Reworks Assigned"
-              value={stats.reworksAssigned}
-              accentColor="#f59e0b"
-            />
-          </div>
-
-          {/* 4. Station card */}
-          {stageId ? (
-            <StationCard
-              stageId={stageId}
-              pending={stats.pendingInQueue}
-              reworks={stats.reworksAssigned}
-              isInteractive={isActive}
-              onClick={handleStationCardClick}
-            />
-          ) : (
-            <div
-              className="rounded-2xl p-5 text-sm text-gray-500 text-center"
-              style={{
-                background: 'var(--color-card-bg)',
-                border: '1px solid var(--color-card-border)',
-              }}
-            >
-              No station assigned — contact your supervisor
-            </div>
-          )}
+        {/* 4 stat cards — 2×2 grid */}
+        <div className="grid grid-cols-2 gap-2">
+          <StatCard label="Completed Today" value={stats.completedToday} accentColor="#22c55e" />
+          <StatCard label="Pending in Queue" value={stats.pendingInQueue} accentColor="var(--color-primary)" />
+          <StatCard label="Reworks Assigned" value={stats.reworksAssigned} accentColor="#f59e0b" />
+          <StatCard label="Station Assigned" value={wsLabel ?? '—'} accentColor="#8b5cf6" small />
         </div>
+
+        {/* Queue section */}
+        {!stageId ? (
+          <div className="rounded-2xl p-5 text-sm text-gray-500 text-center"
+            style={{ background: 'var(--color-card-bg)', border: '1px solid var(--color-card-border)' }}>
+            No station assigned — contact your supervisor
+          </div>
+        ) : (
+          <>
+            {/* Queue header */}
+            <div className="flex items-center justify-between px-1">
+              <p className="text-sm font-semibold text-gray-700">Queue · {wsLabel}</p>
+              {meters.length > 0 && (
+                <span className="text-xs font-semibold px-2.5 py-1 rounded-full text-white" style={{ background: 'var(--color-primary)' }}>
+                  {meters.length}
+                </span>
+              )}
+            </div>
+
+            {/* Queue list */}
+            {meters.length === 0 ? (
+              <div className="flex flex-col items-center py-12 text-center">
+                <span className="text-4xl mb-3">✅</span>
+                <p className="text-base font-semibold text-gray-700">All clear — no meters in queue</p>
+                <p className="text-sm text-gray-400 mt-1">New meters appear automatically.</p>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-3">
+                {meters.map(meter => (
+                  <QueueCard key={meter.id} meter={meter} isInteractive={isActive} onClick={handleMeterClick} />
+                ))}
+              </div>
+            )}
+          </>
+        )}
       </div>
+
+      {/* FAB — add meter, stage_01 only */}
+      {stageId === 'stage_01' && !isGated && (
+        <button
+          onClick={() => setAddModalOpen(true)}
+          className="fixed bottom-6 right-6 z-30 flex items-center justify-center rounded-full shadow-lg transition-all active:scale-95"
+          style={{ width: '56px', height: '56px', background: 'var(--color-primary)', color: '#fff' }}
+          aria-label="Add meter"
+        >
+          <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          </svg>
+        </button>
+      )}
+
+      <AddMeterModal open={addModalOpen} onClose={() => setAddModalOpen(false)} onSuccess={() => setAddModalOpen(false)} />
     </div>
   )
 }

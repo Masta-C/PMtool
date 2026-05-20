@@ -836,7 +836,7 @@ export default function MeterParameterFormPage() {
       await clearDraft(meterId)
       await advanceMeter(meterId, nextStageId)
 
-      router.replace('/operator/queue')
+      router.replace('/operator')
     } catch {
       setSubmitting(false)
     }
@@ -904,7 +904,7 @@ export default function MeterParameterFormPage() {
       await routeToRework(meterId, selectedStageId, currentStageId)
 
       // 4. Navigate back to queue
-      router.replace('/operator/queue')
+      router.replace('/operator')
     } catch {
       setReworkSubmitting(false)
     }
@@ -930,7 +930,7 @@ export default function MeterParameterFormPage() {
     return (
       <ErrorState
         message={error ?? 'Meter not found.'}
-        onBack={() => router.back()}
+        onBack={() => router.replace('/operator')}
       />
     )
   }
@@ -980,7 +980,7 @@ export default function MeterParameterFormPage() {
         }}
       >
         <button
-          onClick={() => router.back()}
+          onClick={() => router.replace('/operator')}
           className="flex items-center justify-center rounded-full text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors shrink-0"
           style={{ width: '44px', height: '44px' }}
           aria-label="Back to queue"
@@ -1015,7 +1015,7 @@ export default function MeterParameterFormPage() {
       {/* ------------------------------------------------------------------ */}
       {/* Scrollable body                                                      */}
       {/* ------------------------------------------------------------------ */}
-      <div className="flex-1 flex flex-col px-4 py-4 gap-4 max-w-2xl mx-auto w-full pb-40">
+      <div className="flex-1 flex flex-col px-4 py-4 gap-4 max-w-2xl mx-auto w-full pb-72">
 
         {/* Meter identity strip */}
         <div
