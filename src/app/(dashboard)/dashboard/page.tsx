@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import { stationLabel } from '@/lib/stages'
 
@@ -561,36 +562,12 @@ function ExportPanel({ onClose }: { onClose: () => void }) {
 }
 
 // ---------------------------------------------------------------------------
-// Simplified operator/QA view
-// ---------------------------------------------------------------------------
-
-function SimplifiedView() {
-  return (
-    <div className="p-6 md:p-10 flex flex-col gap-6">
-      <h1 className="text-2xl font-bold text-gray-800">Dashboard</h1>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-sm">
-        <MetricCard
-          label="Completed Today"
-          value={String(MOCK_METRICS.completedToday)}
-          accentColor="var(--color-success)"
-        />
-        <MetricCard
-          label="Your Station Queue"
-          value="9"
-          subLabel="Functional Testing"
-          accentColor="var(--color-primary)"
-        />
-      </div>
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
 // Main dashboard page
 // ---------------------------------------------------------------------------
 
 export default function DashboardPage() {
   const { role, loading } = useAuth()
+  const router = useRouter()
   const [showExport, setShowExport] = useState(false)
   const [lastRefreshed, setLastRefreshed] = useState<Date>(() => new Date())
   const [timeAgoLabel, setTimeAgoLabel] = useState<string>('just now')
@@ -615,15 +592,25 @@ export default function DashboardPage() {
     setLastRefreshed(new Date())
   }, [])
 
+  // Redirect operators and QA to their dedicated home screens
+  useEffect(() => {
+    if (!loading && role === 'operator') {
+      router.replace('/operator')
+    }
+    if (!loading && role === 'qa') {
+      router.replace('/qa')
+    }
+  }, [loading, role, router])
+
   if (loading) {
     return (
       <div className="p-10 text-gray-400 text-sm">Loading…</div>
     )
   }
 
-  // Operator and QA see simplified view
+  // Operator and QA redirect to their own screens — show nothing while redirecting
   if (role === 'operator' || role === 'qa') {
-    return <SimplifiedView />
+    return null
   }
 
   // Admin and supervisor see full dashboard

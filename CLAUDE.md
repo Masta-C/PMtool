@@ -53,12 +53,17 @@ A **shop floor execution system** for manufacturing operations. Operators scan/r
 
 ## Current Phase
 
-**Phase 0 — Infrastructure complete. Phase 1 — Active development starting.**
+**V2 complete — all screens built and merged to `main`. Next priority: wire Firestore data layer into UI (replace mock stubs).**
 
-Infrastructure that is live:
-- Firebase project, emulators, GitHub Actions CI/CD, branch strategy, auth/session/RBAC, Cloud Functions scaffold, Firestore rules, seed scripts.
+What's live on `main`:
+- Full nav (Dashboard, Workstations, Team, Reports, Audit Log)
+- Dashboard: 4 metric cards + 4 charts (Meters In Progress, Station vs Failure Rate, Operator vs Failure Rate, Throughput line graph) + refresh button + Week/Month toggles
+- Workstations: 13 station cards, machine status accent (G/Y/R), Queue+Rework badge modals, operator name dropdown, Today/Month date selector
+- Team: create user form (auto Op ID + one-time password), real-time workstation column stub
+- Reports: 3 tabs — Production (filters + CSV export), Rework (open items), QA (failure history + Tamper Test)
+- Audit Log: full functionality
 
-Core types and Firestore helpers are stubbed with `// TODO Phase 1` — do not treat these as done.
+All UI screens still use **mock/stub data**. Firestore wiring is the next major task.
 
 ---
 
@@ -82,12 +87,13 @@ Core types and Firestore helpers are stubbed with `// TODO Phase 1` — do not t
 ## Roles & Permissions
 
 ```
-super_admin → full access, can assign any role, delete users/workstations
 admin       → manage users/workstations/products, view all reports
 supervisor  → manage users, view reports, cannot delete
 operator    → own queue + assigned workstations only
 qa          → queue + rework + assigned workstations
 ```
+
+> **`super_admin` role has been removed as of V2.** The emulator seed still has a `superadmin@pmtool.dev` user with the old claim — it can log in but will see an empty nav. Use `admin@pmtool.dev` instead.
 
 Role is stored as a **JWT custom claim** (`token.claims.role`) and enforced in three places:
 1. **Firestore rules** — `firestore.rules` (server-enforced)
@@ -282,11 +288,12 @@ NEXT_PUBLIC_USE_EMULATOR=true FIREBASE_AUTH_EMULATOR_HOST=localhost:9099 FIRESTO
 ### Test credentials
 | Role | Email | Password |
 |---|---|---|
-| super_admin | superadmin@pmtool.dev | Test1234! |
 | admin | admin@pmtool.dev | Test1234! |
 | supervisor | supervisor@pmtool.dev | Test1234! |
 | operator | operator@pmtool.dev | Test1234! |
 | qa | qa@pmtool.dev | Test1234! |
+
+> `superadmin@pmtool.dev` (Test1234!) still exists in the emulator seed but has a stale `super_admin` claim — it logs in with no nav items. Do not use it; update the seed script to remove it.
 
 ---
 
@@ -330,33 +337,43 @@ src/
   app/
     (auth)/login/page.tsx         Login form — handles session cookie + redirect
     (auth)/layout.tsx             Pass-through only — no redirect logic here
-    (dashboard)/layout.tsx        Auth guard via useAuth + loading state
-    (dashboard)/*/page.tsx        Feature pages (mostly Phase 1 stubs)
+    (dashboard)/layout.tsx        Auth guard via useAuth + loading state; fixed sidebar (h-screen overflow-hidden)
+    (dashboard)/dashboard/page.tsx  4 metric cards + 4 charts + Week/Month toggles + refresh button (mock data)
+    (dashboard)/workstations/page.tsx  13 station cards, machine status (G/Y/R), Queue+Rework modals (mock data)
+    (dashboard)/team/page.tsx     Create user (auto OpID + one-time password), user table (mock workstation column)
+    (dashboard)/reports/page.tsx  3 tabs: Production (filters+CSV), Rework (open items), QA (mock data)
+    (dashboard)/audit-log/page.tsx  Audit log table (mock data)
     api/auth/session/route.ts     POST: set cookie | DELETE: clear cookie
     api/health/route.ts           Health check
   middleware.ts                   Edge Runtime — cookie decode + RBAC routing
+  components/
+    layout/Sidebar.tsx            Fixed sidebar, 5 nav items, role-filtered, no super_admin
   lib/
     firebase/
       client.ts                   Client SDK init + emulator connection
       admin.ts                    Admin SDK init (API routes only)
+      firestore.ts                setMachineStatus, subscribeMachineStatuses
     auth/
       roleGuard.ts                canAccess(role, pathname)
       signOut.ts                  Clears cookie + signs out + redirects
+    stages.ts                     stationLabel(stageId) → "[WS#] Station Name" — 13 stations
   hooks/
     useAuth.ts                    onAuthStateChanged → Zustand store
+    useMachineStatuses.ts         Firestore onSnapshot for all 13 station machineStatus fields
   store/authStore.ts              Zustand: user, role, loading
   config/
     env.ts                        Zod-validated env vars
-    roles.ts                      TODO Phase 1 — role permission config
   types/
-    user.ts                       Role type, AppUser interface
-    workOrder.ts                  TODO Phase 1
-    workstation.ts                TODO Phase 1
+    user.ts                       Role type (admin|supervisor|operator|qa — no super_admin), AppUser
+    workOrder.ts                  Work order types
+    workstation.ts                MachineStatus = 'green'|'yellow'|'red', Workstation interface
   lib/constants.ts                ROLES, ORDER_STATUS, WS_COUNT, MAX_USERS
 functions/src/index.ts            Cloud Functions: setUserRole, createUser, deleteUser, deleteWorkstation, healthCheck
 scripts/
   seed-auth.ts                    Creates 5 test users in Auth emulator
   seed.ts                         Seeds Firestore: workstations, users, workOrders
+docs/
+  prd-v2-improvements.md          V2 PRD (grilled from 18 questions)
 .github/
   workflows/
     ci.yml                        Lint + typecheck + tests (feature/develop)

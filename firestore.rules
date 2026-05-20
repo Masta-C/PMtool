@@ -6,6 +6,8 @@ service cloud.firestore {
     function isSuperAdmin() { return isAuth() && role() == 'super_admin'; }
     function isAdmin() { return isAuth() && role() in ['super_admin', 'admin', 'supervisor']; }
     function isOperatorOrQA() { return isAuth() && role() in ['operator', 'qa']; }
+    function isOperatorOrAbove() { return isAuth() && role() in ['super_admin', 'admin', 'supervisor', 'operator']; }
+    function isQA() { return isAuth() && role() == 'qa'; }
     function userDoc() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
@@ -35,6 +37,18 @@ service cloud.firestore {
       allow read: if isAdmin();
       allow create: if isAuth();
       allow update, delete: if false;
+    }
+    match /meters/{meterId} {
+      allow read: if isAuth();
+      allow create, update: if isOperatorOrAbove();
+      allow delete: if false;
+
+      match /stageHistory/{entryId} {
+        // QA can only read; operators and above can write; nobody can delete
+        allow read: if isAuth();
+        allow create, update: if isOperatorOrAbove() && !isQA();
+        allow delete: if false;
+      }
     }
   }
 }

@@ -6,7 +6,9 @@ import { signOut } from '@/lib/auth/signOut'
 import type { Role } from '@/types/user'
 
 const NAV_ITEMS = [
-  { label: 'Dashboard',    href: '/dashboard',    roles: ['admin','supervisor','operator','qa'] as Role[] },
+  { label: 'Dashboard',    href: '/dashboard',    roles: ['admin','supervisor'] as Role[] },
+  { label: 'QA Dashboard', href: '/qa',           roles: ['qa'] as Role[] },
+  { label: 'Home',         href: '/operator',     roles: ['operator'] as Role[] },
   { label: 'Workstations', href: '/workstations', roles: ['admin','supervisor'] as Role[] },
   { label: 'Team',         href: '/team',         roles: ['admin','supervisor'] as Role[] },
   { label: 'Reports',      href: '/reports',      roles: ['admin','supervisor'] as Role[] },
