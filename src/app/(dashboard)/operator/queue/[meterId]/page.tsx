@@ -951,7 +951,7 @@ export default function MeterParameterFormPage() {
 
   return (
     <div
-      className="min-h-screen flex flex-col"
+      className="h-screen flex flex-col"
       style={{ background: 'var(--color-content-bg)' }}
     >
       {/* ------------------------------------------------------------------ */}
@@ -972,7 +972,7 @@ export default function MeterParameterFormPage() {
       {/* Header                                                               */}
       {/* ------------------------------------------------------------------ */}
       <div
-        className="sticky top-0 z-40 px-4 flex items-center gap-3 border-b"
+        className="shrink-0 px-4 flex items-center gap-3 border-b z-40"
         style={{
           background: 'var(--color-card-bg)',
           borderColor: 'var(--color-card-border)',
@@ -1015,7 +1015,8 @@ export default function MeterParameterFormPage() {
       {/* ------------------------------------------------------------------ */}
       {/* Scrollable body                                                      */}
       {/* ------------------------------------------------------------------ */}
-      <div className="flex-1 flex flex-col px-4 py-4 gap-4 max-w-2xl mx-auto w-full pb-72">
+      <div className="flex-1 overflow-y-auto">
+      <div className="flex flex-col px-4 py-4 gap-4 max-w-2xl mx-auto w-full pb-6">
 
         {/* Meter identity strip */}
         <div
@@ -1123,12 +1124,13 @@ export default function MeterParameterFormPage() {
           />
         </div>
       </div>
+      </div>
 
       {/* ------------------------------------------------------------------ */}
-      {/* Sticky action buttons                                               */}
+      {/* Action buttons — in-flow footer, never overlaps content             */}
       {/* ------------------------------------------------------------------ */}
       <div
-        className="fixed bottom-0 left-0 right-0 z-40 px-4 py-4 flex flex-col gap-2 max-w-2xl mx-auto"
+        className="shrink-0 px-4 py-4 flex flex-col gap-2 max-w-2xl mx-auto w-full"
         style={{
           background: 'var(--color-content-bg)',
           borderTop: '1px solid var(--color-card-border)',
