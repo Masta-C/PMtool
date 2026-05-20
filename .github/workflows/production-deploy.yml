@@ -43,9 +43,7 @@ jobs:
       - name: Write service account credentials
         env:
           SA_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_PROD }}
-        run: |
-          echo "$SA_KEY" > /tmp/sa.json
-          python3 -c "import json; json.load(open('/tmp/sa.json')); print('JSON valid')"
+        run: python3 -c "import os,json; k=os.environ['SA_KEY']; json.loads(k); open('/tmp/sa.json','w').write(k); print('JSON valid, written to /tmp/sa.json')"
 
       - name: Authenticate gcloud
         run: gcloud auth activate-service-account --key-file=/tmp/sa.json
