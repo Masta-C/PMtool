@@ -18,18 +18,22 @@ service cloud.firestore {
       allow delete: if isSuperAdmin();
     }
     match /workstations/{wsId} {
-      allow read: if isAdmin() || (isOperatorOrQA() && wsId in userDoc().workstationIds);
+      // Any authenticated user can read workstation status (not sensitive)
+      allow read: if isAuth();
       allow write: if isAdmin();
-      // Operators can update only machineStatus on their assigned workstation
+      // Operators can update only machineStatus — field restriction limits blast radius
+      // userDoc() get() removed: workstation status is not sensitive enough to warrant
+      // a billable cross-document read on every operator status change
       allow update: if isOperatorOrAbove()
-        && wsId in userDoc().workstationIds
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['machineStatus']);
       allow delete: if isSuperAdmin();
     }
     match /workOrders/{orderId} {
-      allow read: if isAdmin() || (isOperatorOrQA() && resource.data.currentWsId in userDoc().workstationIds);
+      // workOrders not yet wired to operator UI; operators/QA get read access by role
+      // userDoc() get() removed to avoid billable cross-document reads per operation
+      allow read: if isAdmin() || isOperatorOrQA();
       allow create: if isAdmin();
-      allow update: if isAdmin() || (isOperatorOrQA() && resource.data.currentWsId in userDoc().workstationIds);
+      allow update: if isAdmin() || isOperatorOrQA();
       allow delete: if isSuperAdmin();
     }
     match /products/{productId} {

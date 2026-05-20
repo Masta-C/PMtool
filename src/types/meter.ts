@@ -47,6 +47,7 @@ export interface Meter {
   createdAt: string
   completedAt: string | null
   reworkCount: number
+  lastFailedParams?: string[] // names of params that failed in the most recent stage submission
   taggedFromStageId: string | null
   note?: string // for ad-hoc meters created at WS1
 }

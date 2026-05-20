@@ -2,26 +2,20 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { doc, getDoc, collection, collectionGroup, query, where, onSnapshot } from 'firebase/firestore'
+import { doc, getDoc, collectionGroup, query, where, onSnapshot } from 'firebase/firestore'
 import { db } from '@/lib/firebase/client'
 import { useAuth } from '@/hooks/useAuth'
-import { subscribeMachineStatuses, setMachineStatus, subscribeMeterQueue, subscribeStageHistory } from '@/lib/firebase/firestore'
+import { subscribeMachineStatuses, setMachineStatus, subscribeMeterQueue } from '@/lib/firebase/firestore'
 import { stationLabel } from '@/lib/stages'
 import { AddMeterModal } from '@/components/operator/AddMeterModal'
 import type { MachineStatus } from '@/types/workstation'
-import type { Meter, StageHistoryEntry } from '@/types/meter'
+import type { Meter } from '@/types/meter'
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 type OperatorStatus = 'active' | 'break' | 'downtime'
-
-interface StatCounts {
-  completedToday: number
-  pendingInQueue: number
-  reworksAssigned: number
-}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -133,46 +127,12 @@ function useOperatorStation(uid: string | undefined): {
 }
 
 // ---------------------------------------------------------------------------
-// Hook: real-time stat counts from Firestore
+// Hook: completed-today count from Firestore (collectionGroup)
 // ---------------------------------------------------------------------------
 
-function useOperatorStats(
-  stageId: string | null,
-  operatorId: string | undefined
-): StatCounts {
-  const [counts, setCounts] = useState<StatCounts>({
-    completedToday: 0,
-    pendingInQueue: 0,
-    reworksAssigned: 0,
-  })
+function useCompletedToday(operatorId: string | undefined): number {
+  const [completedToday, setCompletedToday] = useState(0)
 
-  // Pending in queue: meters at this stage with status 'queued'
-  useEffect(() => {
-    if (!stageId) return
-    const q = query(
-      collection(db, 'meters'),
-      where('currentStageId', '==', stageId),
-      where('status', 'in', ['queued'])
-    )
-    return onSnapshot(q, snap => {
-      setCounts(prev => ({ ...prev, pendingInQueue: snap.size }))
-    })
-  }, [stageId])
-
-  // Reworks assigned: meters at this stage with status 'rework'
-  useEffect(() => {
-    if (!stageId) return
-    const q = query(
-      collection(db, 'meters'),
-      where('currentStageId', '==', stageId),
-      where('status', '==', 'rework')
-    )
-    return onSnapshot(q, snap => {
-      setCounts(prev => ({ ...prev, reworksAssigned: snap.size }))
-    })
-  }, [stageId])
-
-  // Completed today: stageHistory entries submitted by this operator since midnight
   useEffect(() => {
     if (!operatorId) return
     const todayStart = getTodayStart().toISOString()
@@ -182,11 +142,11 @@ function useOperatorStats(
       where('submittedAt', '>=', todayStart)
     )
     return onSnapshot(q, snap => {
-      setCounts(prev => ({ ...prev, completedToday: snap.size }))
+      setCompletedToday(snap.size)
     })
   }, [operatorId])
 
-  return counts
+  return completedToday
 }
 
 // ---------------------------------------------------------------------------
@@ -210,40 +170,6 @@ function useMeterQueue(stageId: string | null): Meter[] {
     return subscribeMeterQueue(stageId, ['queued', 'rework'], setMeters)
   }, [stageId])
   return meters
-}
-
-function useMeterFailures(meterId: string): string[] {
-  const [failedNames, setFailedNames] = useState<string[]>([])
-  useEffect(() => {
-    return subscribeStageHistory(meterId, (entries: StageHistoryEntry[]) => {
-      const seen = new Set<string>()
-      const names: string[] = []
-      for (const entry of entries) {
-        for (const param of entry.parameters) {
-          if (!param.passed && !seen.has(param.parameterId)) {
-            seen.add(param.parameterId)
-            names.push(param.name)
-          }
-        }
-      }
-      setFailedNames(names)
-    })
-  }, [meterId])
-  return failedNames
-}
-
-function QueueCardFailures({ meterId }: { meterId: string }) {
-  const failedNames = useMeterFailures(meterId)
-  if (failedNames.length === 0) return null
-  return (
-    <div className="flex flex-wrap gap-1 mt-1.5">
-      {failedNames.map(name => (
-        <span key={name} className="px-2 py-0.5 rounded-full text-xs font-medium" style={{ background: '#f3f4f6', color: '#4b5563' }}>
-          {name}
-        </span>
-      ))}
-    </div>
-  )
 }
 
 function TimeAgo({ isoString }: { isoString: string }) {
@@ -282,7 +208,15 @@ function QueueCard({ meter, isInteractive, onClick }: { meter: Meter; isInteract
             )}
           </div>
           <p className="text-sm text-gray-500 mt-0.5 leading-snug">{meter.meterType}</p>
-          <QueueCardFailures meterId={meter.id} />
+          {meter.lastFailedParams && meter.lastFailedParams.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-1.5">
+              {meter.lastFailedParams.map(name => (
+                <span key={name} className="px-2 py-0.5 rounded-full text-xs font-medium" style={{ background: '#f3f4f6', color: '#4b5563' }}>
+                  {name}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
         <div className="flex flex-col items-end gap-2 shrink-0 pt-0.5">
           <TimeAgo isoString={meter.createdAt} />
@@ -430,8 +364,10 @@ export default function OperatorPage() {
     return () => clearInterval(id)
   }, [statusSetAt])
 
-  const stats = useOperatorStats(stageId, user?.uid)
   const meters = useMeterQueue(stageId)
+  const pendingInQueue = meters.filter(m => m.status === 'queued').length
+  const reworksAssigned = meters.filter(m => m.status === 'rework').length
+  const completedToday = useCompletedToday(user?.uid)
   const [addModalOpen, setAddModalOpen] = useState(false)
 
   const handleStatusChange = useCallback(async (newStatus: OperatorStatus) => {
@@ -471,9 +407,9 @@ export default function OperatorPage() {
 
         {/* 4 stat cards — 2×2 grid */}
         <div className="grid grid-cols-2 gap-2">
-          <StatCard label="Completed Today" value={stats.completedToday} accentColor="#22c55e" />
-          <StatCard label="Pending in Queue" value={stats.pendingInQueue} accentColor="var(--color-primary)" />
-          <StatCard label="Reworks Assigned" value={stats.reworksAssigned} accentColor="#f59e0b" />
+          <StatCard label="Completed Today" value={completedToday} accentColor="#22c55e" />
+          <StatCard label="Pending in Queue" value={pendingInQueue} accentColor="var(--color-primary)" />
+          <StatCard label="Reworks Assigned" value={reworksAssigned} accentColor="#f59e0b" />
           <StatCard label="Station Assigned" value={wsLabel ?? '—'} accentColor="#8b5cf6" small />
         </div>
 

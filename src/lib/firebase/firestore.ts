@@ -9,10 +9,16 @@ import {
   query,
   where,
   getDocs,
+  getDoc,
   updateDoc,
   orderBy,
+  limit,
   Timestamp,
+  increment,
+  documentId,
 } from 'firebase/firestore'
+
+const PAGE_SIZE = 200
 import { db } from './client'
 import type { MachineStatus } from '@/types/workstation'
 import type { Meter, StageHistoryEntry, ParameterDraft } from '@/types/meter'
@@ -39,20 +45,23 @@ export function subscribeMachineStatuses(
   stationIds: string[],
   onUpdate: (statuses: Record<string, MachineStatus | null>) => void
 ): () => void {
-  const state: Record<string, MachineStatus | null> = {}
-  const unsubs: (() => void)[] = []
-
-  for (const stationId of stationIds) {
-    const ref = doc(db, 'workstations', stationId)
-    const unsub = onSnapshot(ref, (snap) => {
-      const data = snap.data()
-      state[stationId] = (data?.machineStatus as MachineStatus | null) ?? null
-      onUpdate({ ...state })
-    })
-    unsubs.push(unsub)
+  if (stationIds.length === 0) {
+    onUpdate({})
+    return () => {}
   }
-
-  return () => unsubs.forEach((u) => u())
+  const q = query(
+    collection(db, 'workstations'),
+    where(documentId(), 'in', stationIds)
+  )
+  return onSnapshot(q, (snap) => {
+    const state: Record<string, MachineStatus | null> = {}
+    // Initialise all to null so missing docs show as null
+    for (const id of stationIds) state[id] = null
+    for (const d of snap.docs) {
+      state[d.id] = (d.data()?.machineStatus as MachineStatus | null) ?? null
+    }
+    onUpdate(state)
+  })
 }
 
 // ---------------------------------------------------------------------------
@@ -129,6 +138,8 @@ export function subscribeMeterQueue(
 
 /**
  * Write a new stageHistory entry (subcollection, append-only).
+ * Also updates lastFailedParams on the meter doc so queue cards can show
+ * failure badges without a separate listener.
  */
 export async function submitStageResult(
   meterId: string,
@@ -136,6 +147,11 @@ export async function submitStageResult(
 ): Promise<void> {
   const historyRef = collection(db, 'meters', meterId, 'stageHistory')
   await addDoc(historyRef, entry)
+  const failedNames = entry.parameters
+    .filter(p => !p.passed)
+    .map(p => p.name)
+  const meterRef = doc(db, 'meters', meterId)
+  await updateDoc(meterRef, { lastFailedParams: failedNames })
 }
 
 /**
@@ -153,6 +169,7 @@ export async function advanceMeter(
       completedAt: new Date().toISOString(),
       assignedOperatorId: null,
       draftResults: null,
+      lastFailedParams: [],
     })
   } else {
     await updateDoc(ref, {
@@ -160,6 +177,7 @@ export async function advanceMeter(
       status: 'queued',
       assignedOperatorId: null,
       draftResults: null,
+      lastFailedParams: [],
     })
   }
 }
@@ -186,23 +204,24 @@ export async function clearDraft(meterId: string): Promise<void> {
 /**
  * Route meter to rework at target stage.
  * reworkCount is incremented by reading the current stageHistory entry count.
+ * failedParamNames are written to lastFailedParams so queue cards can show
+ * failure badges without opening a separate stageHistory listener.
  */
 export async function routeToRework(
   meterId: string,
   targetStageId: string,
-  taggedFromStageId: string
+  taggedFromStageId: string,
+  failedParamNames: string[] = []
 ): Promise<void> {
   const ref = doc(db, 'meters', meterId)
-  const historySnap = await getDocs(
-    collection(db, 'meters', meterId, 'stageHistory')
-  )
   await updateDoc(ref, {
     status: 'rework',
     currentStageId: targetStageId,
     taggedFromStageId,
     assignedOperatorId: null,
     draftResults: null,
-    reworkCount: historySnap.size,
+    reworkCount: increment(1),
+    lastFailedParams: failedParamNames,
   })
 }
 
@@ -265,6 +284,7 @@ export async function getMetersByStatus(
     constraints.push(where('createdAt', '<=', isoTo(toDate)))
   }
 
+  constraints.push(limit(PAGE_SIZE))
   const q = query(metersCol, ...constraints)
   const snap = await getDocs(q)
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Meter)
@@ -281,51 +301,28 @@ export async function getStageHistoryByStageId(
   fromDate?: Date,
   toDate?: Date
 ): Promise<(StageHistoryEntry & { meterId: string })[]> {
-  try {
-    const historyGroup = collectionGroup(db, 'stageHistory')
-    const constraints = [
-      where('stageId', '==', stageId),
-      orderBy('submittedAt', 'desc'),
-    ] as Parameters<typeof query>[1][]
+  const historyGroup = collectionGroup(db, 'stageHistory')
+  const constraints = [
+    where('stageId', '==', stageId),
+    orderBy('submittedAt', 'desc'),
+  ] as Parameters<typeof query>[1][]
 
-    if (fromDate) {
-      constraints.push(where('submittedAt', '>=', isoFrom(fromDate)))
-    }
-    if (toDate) {
-      constraints.push(where('submittedAt', '<=', isoTo(toDate)))
-    }
-
-    const q = query(historyGroup, ...constraints)
-    const snap = await getDocs(q)
-
-    return snap.docs.map((d) => {
-      // Parent path: meters/{meterId}/stageHistory/{entryId}
-      const meterId = d.ref.parent.parent?.id ?? ''
-      return { id: d.id, meterId, ...d.data() } as StageHistoryEntry & { meterId: string }
-    })
-  } catch {
-    // Fallback: fetch all meters then filter stageHistory client-side
-    const metersSnap = await getDocs(collection(db, 'meters'))
-    const results: (StageHistoryEntry & { meterId: string })[] = []
-
-    await Promise.all(
-      metersSnap.docs.map(async (mDoc) => {
-        const histRef = collection(db, 'meters', mDoc.id, 'stageHistory')
-        const histSnap = await getDocs(
-          query(histRef, where('stageId', '==', stageId), orderBy('submittedAt', 'desc'))
-        )
-        histSnap.docs.forEach((d) => {
-          const entry = { id: d.id, meterId: mDoc.id, ...d.data() } as StageHistoryEntry & { meterId: string }
-          if (fromDate && entry.submittedAt < isoFrom(fromDate)) return
-          if (toDate && entry.submittedAt > isoTo(toDate)) return
-          results.push(entry)
-        })
-      })
-    )
-
-    results.sort((a, b) => b.submittedAt.localeCompare(a.submittedAt))
-    return results
+  if (fromDate) {
+    constraints.push(where('submittedAt', '>=', isoFrom(fromDate)))
   }
+  if (toDate) {
+    constraints.push(where('submittedAt', '<=', isoTo(toDate)))
+  }
+
+  constraints.push(limit(PAGE_SIZE))
+  const q = query(historyGroup, ...constraints)
+  const snap = await getDocs(q)
+
+  return snap.docs.map((d) => {
+    // Parent path: meters/{meterId}/stageHistory/{entryId}
+    const meterId = d.ref.parent.parent?.id ?? ''
+    return { id: d.id, meterId, ...d.data() } as StageHistoryEntry & { meterId: string }
+  })
 }
 
 /**
@@ -335,50 +332,27 @@ export async function getFailedAcceptedEntries(
   fromDate?: Date,
   toDate?: Date
 ): Promise<(StageHistoryEntry & { meterId: string })[]> {
-  try {
-    const historyGroup = collectionGroup(db, 'stageHistory')
-    const constraints = [
-      where('overallResult', '==', 'FAILED_ACCEPTED'),
-      orderBy('submittedAt', 'desc'),
-    ] as Parameters<typeof query>[1][]
+  const historyGroup = collectionGroup(db, 'stageHistory')
+  const constraints = [
+    where('overallResult', '==', 'FAILED_ACCEPTED'),
+    orderBy('submittedAt', 'desc'),
+  ] as Parameters<typeof query>[1][]
 
-    if (fromDate) {
-      constraints.push(where('submittedAt', '>=', isoFrom(fromDate)))
-    }
-    if (toDate) {
-      constraints.push(where('submittedAt', '<=', isoTo(toDate)))
-    }
-
-    const q = query(historyGroup, ...constraints)
-    const snap = await getDocs(q)
-
-    return snap.docs.map((d) => {
-      const meterId = d.ref.parent.parent?.id ?? ''
-      return { id: d.id, meterId, ...d.data() } as StageHistoryEntry & { meterId: string }
-    })
-  } catch {
-    // Fallback: fetch all meters then filter stageHistory client-side
-    const metersSnap = await getDocs(collection(db, 'meters'))
-    const results: (StageHistoryEntry & { meterId: string })[] = []
-
-    await Promise.all(
-      metersSnap.docs.map(async (mDoc) => {
-        const histRef = collection(db, 'meters', mDoc.id, 'stageHistory')
-        const histSnap = await getDocs(
-          query(histRef, where('overallResult', '==', 'FAILED_ACCEPTED'), orderBy('submittedAt', 'desc'))
-        )
-        histSnap.docs.forEach((d) => {
-          const entry = { id: d.id, meterId: mDoc.id, ...d.data() } as StageHistoryEntry & { meterId: string }
-          if (fromDate && entry.submittedAt < isoFrom(fromDate)) return
-          if (toDate && entry.submittedAt > isoTo(toDate)) return
-          results.push(entry)
-        })
-      })
-    )
-
-    results.sort((a, b) => b.submittedAt.localeCompare(a.submittedAt))
-    return results
+  if (fromDate) {
+    constraints.push(where('submittedAt', '>=', isoFrom(fromDate)))
   }
+  if (toDate) {
+    constraints.push(where('submittedAt', '<=', isoTo(toDate)))
+  }
+
+  constraints.push(limit(PAGE_SIZE))
+  const q = query(historyGroup, ...constraints)
+  const snap = await getDocs(q)
+
+  return snap.docs.map((d) => {
+    const meterId = d.ref.parent.parent?.id ?? ''
+    return { id: d.id, meterId, ...d.data() } as StageHistoryEntry & { meterId: string }
+  })
 }
 
 /**
@@ -395,11 +369,9 @@ export async function getMeterSerialNumbers(
   await Promise.all(
     unique.map(async (id) => {
       try {
-        const snap = await getDocs(
-          query(collection(db, 'meters'), where('__name__', '==', id))
-        )
-        if (!snap.empty) {
-          map[id] = (snap.docs[0].data() as Meter).serialNumber
+        const snap = await getDoc(doc(db, 'meters', id))
+        if (snap.exists()) {
+          map[id] = (snap.data() as Meter).serialNumber
         }
       } catch {
         // ignore individual fetch errors
