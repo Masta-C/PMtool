@@ -16,6 +16,8 @@ export function middleware(request: NextRequest) {
         if (parts.length >= 2) {
           const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/')
           const payload = JSON.parse(atob(b64))
+          if (payload.role === 'operator') return NextResponse.redirect(new URL('/operator', request.url))
+          if (payload.role === 'qa') return NextResponse.redirect(new URL('/qa', request.url))
           if (payload.role) return NextResponse.redirect(new URL('/dashboard', request.url))
         }
       } catch { /* invalid token, let them see login */ }
