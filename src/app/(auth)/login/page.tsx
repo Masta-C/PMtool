@@ -6,7 +6,7 @@ import { auth } from '@/lib/firebase/client'
 import type { Role } from '@/types/user'
 const ROLE_REDIRECT: Record<Role, string> = {
   admin: '/dashboard', supervisor: '/dashboard',
-  operator: '/dashboard', qa: '/dashboard',
+  operator: '/operator', qa: '/qa',
 }
 export default function LoginPage() {
   const [email, setEmail] = useState('')

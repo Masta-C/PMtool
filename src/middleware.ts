@@ -33,7 +33,10 @@ export function middleware(request: NextRequest) {
     const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/')
     const payload = JSON.parse(atob(b64))
     const role = payload.role as Role
-    if (!role || !canAccess(role, pathname)) return NextResponse.redirect(new URL('/dashboard', request.url))
+    if (!role || !canAccess(role, pathname)) {
+      const home = role === 'operator' ? '/operator' : role === 'qa' ? '/qa' : '/dashboard'
+      return NextResponse.redirect(new URL(home, request.url))
+    }
     return NextResponse.next()
   } catch {
     return NextResponse.redirect(new URL('/login', request.url))
