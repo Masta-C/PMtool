@@ -1,6 +1,8 @@
 'use client'
 
 import { useState, useRef, useCallback } from 'react'
+import { doc, getDoc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore'
+import { db } from '@/lib/firebase/client'
 import { useAuth } from '@/hooks/useAuth'
 import { useUsers } from '@/hooks/useUsers'
 import { stationLabel } from '@/lib/stages'
@@ -556,7 +558,7 @@ function StationCard({
   total: number
   reworkCount: number
   operator: string
-  onOperatorChange: (stageId: string, op: string) => void
+  onOperatorChange: (stageId: string, op: string) => void | Promise<void>
   operatorOptions: OperatorOption[]
   dateRange: DateRange | null
   onDateRangeChange: (stationId: string, range: DateRange) => void
@@ -875,9 +877,29 @@ function WorkstationsPageInner() {
   // Hidden file input ref
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const handleOperatorChange = useCallback((stageId: string, op: string) => {
+  const handleOperatorChange = useCallback(async (stageId: string, op: string) => {
+    const stationId = stageId.replace('stage_', 'ws_')
+    const prevOp = operators[stageId] ?? UNASSIGNED_VALUE
+
+    // Remove stationId from previous operator's workstationIds
+    if (prevOp && prevOp !== UNASSIGNED_VALUE) {
+      try {
+        await updateDoc(doc(db, 'users', prevOp), { workstationIds: arrayRemove(stationId) })
+      } catch (e) { console.error('Failed to unassign previous operator', e) }
+    }
+    // Add stationId to new operator's workstationIds
+    if (op && op !== UNASSIGNED_VALUE) {
+      try {
+        // Ensure the user doc exists before updating
+        const userSnap = await getDoc(doc(db, 'users', op))
+        if (userSnap.exists()) {
+          await updateDoc(doc(db, 'users', op), { workstationIds: arrayUnion(stationId) })
+        }
+      } catch (e) { console.error('Failed to assign operator', e) }
+    }
+
     setOperators(prev => ({ ...prev, [stageId]: op }))
-  }, [])
+  }, [operators])
 
   const handleDateRangeChange = useCallback((stationId: string, range: DateRange) => {
     saveDateRange(stationId, range)
