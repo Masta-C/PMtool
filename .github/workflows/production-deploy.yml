@@ -46,9 +46,18 @@ jobs:
       - name: Authenticate gcloud
         run: gcloud auth activate-service-account --key-file=/tmp/sa.json
 
-      - name: Deploy to Firebase (hosting + rules + indexes + functions)
+      - name: Deploy Firestore + Functions
         run: |
           firebase experiments:enable webframeworks
-          firebase deploy --only hosting,firestore:rules,firestore:indexes,functions --project pmtool-3f8db --force
+          firebase deploy --only firestore:rules,firestore:indexes,functions --project pmtool-3f8db --force
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: /tmp/sa.json
+
+      - name: Deploy Hosting (with retry)
+        run: |
+          firebase experiments:enable webframeworks
+          firebase deploy --only hosting --project pmtool-3f8db --force || \
+          (echo "First attempt failed, retrying in 30s..." && sleep 30 && \
+           firebase deploy --only hosting --project pmtool-3f8db --force)
         env:
           GOOGLE_APPLICATION_CREDENTIALS: /tmp/sa.json
