@@ -7,6 +7,7 @@ on:
 jobs:
   deploy-production:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       NEXT_PUBLIC_USE_EMULATOR: 'false'
       NEXT_PUBLIC_FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY_PROD }}
@@ -47,6 +48,7 @@ jobs:
         run: gcloud auth activate-service-account --key-file=/tmp/sa.json
 
       - name: Deploy Firestore + Functions
+        timeout-minutes: 10
         run: |
           firebase experiments:enable webframeworks
           firebase deploy --only firestore:rules,firestore:indexes,functions --project pmtool-3f8db --force
@@ -54,6 +56,7 @@ jobs:
           GOOGLE_APPLICATION_CREDENTIALS: /tmp/sa.json
 
       - name: Deploy Hosting (with retry)
+        timeout-minutes: 15
         run: |
           firebase experiments:enable webframeworks
           firebase deploy --only hosting --project pmtool-3f8db --force || \
