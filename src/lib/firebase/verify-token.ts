@@ -9,7 +9,8 @@ const JWKS_URI = new URL(
 // Singleton — created once per process, caches keys and respects
 // Cache-Control from Google (typically max-age=21600, i.e. 6 hours).
 // When a token arrives with an unknown kid, jose auto-refetches.
-const FIREBASE_JWKS = createRemoteJWKSet(JWKS_URI)
+// timeoutDuration: fail fast on cold-start JWKS fetch instead of hanging forever.
+const FIREBASE_JWKS = createRemoteJWKSet(JWKS_URI, { timeoutDuration: 10_000 })
 
 export interface FirebaseTokenPayload {
   uid: string
