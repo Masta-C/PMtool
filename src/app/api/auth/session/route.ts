@@ -7,17 +7,14 @@ export async function POST(req: NextRequest) {
     const decoded = await verifyFirebaseToken(idToken)
     const role = decoded.role ?? ''
 
-    // Store only the claims the middleware needs — not the raw JWT.
-    // Storing the full JWT requires base64url decoding in the Edge Runtime
-    // middleware which is fragile (atob padding issues). Simple JSON is reliable.
-    const sessionPayload = JSON.stringify({
-      uid: decoded.uid,
-      role,
-      exp: decoded.exp, // keep expiry so middleware can check it if needed
-    })
-
+    // Store only the role string — no JSON, no encoding issues.
+    // Next.js cookies.set() percent-encodes values; JSON strings become
+    // %7B%22uid%22... which JSON.parse() cannot read in the middleware.
+    // A plain role string ("admin", "operator", etc.) contains only ASCII
+    // letters and is never encoded, so request.cookies.get().value is always
+    // the exact string the middleware needs.
     const res = NextResponse.json({ ok: true, role })
-    res.cookies.set('pmtool-session', sessionPayload, {
+    res.cookies.set('pmtool-session', role, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',

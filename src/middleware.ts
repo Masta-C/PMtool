@@ -6,13 +6,10 @@ import type { Role } from '@/types/user'
 const PUBLIC_PATHS = ['/_next', '/favicon.ico', '/api/health', '/api/auth']
 
 function getSessionRole(cookieValue: string): Role | null {
-  try {
-    // Cookie stores { uid, role, exp } as plain JSON (set by /api/auth/session).
-    const payload = JSON.parse(cookieValue)
-    return (payload.role as Role) ?? null
-  } catch {
-    return null
-  }
+  // Cookie stores the role string directly ("admin", "supervisor", etc).
+  // Plain ASCII — never percent-encoded by Next.js cookies.set().
+  const role = cookieValue as Role
+  return role || null
 }
 
 export function middleware(request: NextRequest) {
