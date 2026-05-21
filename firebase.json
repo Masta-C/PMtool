@@ -24,7 +24,6 @@
     ],
     "frameworksBackend": {
       "region": "asia-south1",
-      "minInstances": 1,
       "timeoutSeconds": 30
     }
   },
