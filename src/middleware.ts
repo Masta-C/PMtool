@@ -12,6 +12,14 @@ function getSessionRole(cookieValue: string): Role | null {
   return role || null
 }
 
+// Prevent Firebase Hosting CDN from ever caching auth redirect responses.
+// Without this, an early unauthenticated 307 for /dashboard can be cached
+// and served to all subsequent requests, bypassing Cloud Run entirely.
+function noCache(res: NextResponse): NextResponse {
+  res.headers.set('Cache-Control', 'no-store, private')
+  return res
+}
+
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
@@ -23,23 +31,23 @@ export function middleware(request: NextRequest) {
   if (pathname === '/login') {
     if (session?.value) {
       const role = getSessionRole(session.value)
-      if (role === 'operator') return NextResponse.redirect(new URL('/operator', request.url))
-      if (role === 'qa') return NextResponse.redirect(new URL('/qa', request.url))
-      if (role) return NextResponse.redirect(new URL('/dashboard', request.url))
+      if (role === 'operator') return noCache(NextResponse.redirect(new URL('/operator', request.url)))
+      if (role === 'qa') return noCache(NextResponse.redirect(new URL('/qa', request.url)))
+      if (role) return noCache(NextResponse.redirect(new URL('/dashboard', request.url)))
     }
     return NextResponse.next()
   }
 
   // Protected route — require a valid session cookie
-  if (!session?.value) return NextResponse.redirect(new URL('/login', request.url))
+  if (!session?.value) return noCache(NextResponse.redirect(new URL('/login', request.url)))
 
   const role = getSessionRole(session.value)
   if (!role || !canAccess(role, pathname)) {
     const home = role === 'operator' ? '/operator' : role === 'qa' ? '/qa' : '/dashboard'
-    return NextResponse.redirect(new URL(home, request.url))
+    return noCache(NextResponse.redirect(new URL(home, request.url)))
   }
 
-  return NextResponse.next()
+  return noCache(NextResponse.next())
 }
 
 export const config = {
