@@ -1,12 +1,12 @@
 // TEMPORARY DIAGNOSTIC ENDPOINT — DELETE AFTER LOGIN IS CONFIRMED WORKING
-// Shows what the server actually reads from the pmtool-session cookie.
+// Shows what the server actually reads from the __session cookie.
 // Usage: after logging in, open a new tab and visit /api/debug/cookie
 import { NextRequest, NextResponse } from 'next/server'
 
 const VALID_ROLES = ['admin', 'supervisor', 'operator', 'qa']
 
 export async function GET(req: NextRequest) {
-  const session = req.cookies.get('pmtool-session')
+  const session = req.cookies.get('__session')
   const allCookies = Object.fromEntries(
     req.cookies.getAll().map(c => [c.name, c.value.substring(0, 80)])
   )

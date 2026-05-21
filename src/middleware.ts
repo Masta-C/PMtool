@@ -25,7 +25,7 @@ export function middleware(request: NextRequest) {
 
   if (PUBLIC_PATHS.some(p => pathname.startsWith(p))) return NextResponse.next()
 
-  const session = request.cookies.get('pmtool-session')
+  const session = request.cookies.get('__session')
 
   // If already authenticated, redirect away from login to the right home screen
   if (pathname === '/login') {

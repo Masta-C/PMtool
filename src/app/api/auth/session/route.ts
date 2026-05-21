@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
     // letters and is never encoded, so request.cookies.get().value is always
     // the exact string the middleware needs.
     const res = NextResponse.json({ ok: true, role })
-    res.cookies.set('pmtool-session', role, {
+    res.cookies.set('__session', role, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
@@ -30,6 +30,6 @@ export async function POST(req: NextRequest) {
 
 export async function DELETE() {
   const res = NextResponse.json({ ok: true })
-  res.cookies.delete('pmtool-session')
+  res.cookies.delete('__session')
   return res
 }
