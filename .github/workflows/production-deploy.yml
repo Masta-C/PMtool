@@ -7,8 +7,6 @@ on:
 jobs:
   deploy-production:
     runs-on: ubuntu-latest
-    environment: production
-
     env:
       NEXT_PUBLIC_USE_EMULATOR: 'false'
       NEXT_PUBLIC_FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY_PROD }}
