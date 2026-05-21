@@ -1,5 +1,9 @@
-import { getApps, initializeApp } from 'firebase-admin/app'
+import { getApps, initializeApp, applicationDefault } from 'firebase-admin/app'
+
 export function initAdminApp() {
   if (getApps().length > 0) return
-  initializeApp({ projectId: 'pmtool-3f8db' })
+  initializeApp({
+    credential: applicationDefault(),
+    projectId: 'pmtool-3f8db',
+  })
 }
