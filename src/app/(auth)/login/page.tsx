@@ -33,7 +33,10 @@ export default function LoginPage() {
         body: JSON.stringify({ idToken }),
       })
       console.log('[login] session API status:', sessionRes.status)
-      router.replace(ROLE_REDIRECT[role] ?? '/dashboard')
+      // Use full browser navigation (not Next.js RSC fetch) so the
+      // pmtool-session cookie set by the session API is guaranteed to
+      // be included in the request the middleware sees.
+      window.location.replace(ROLE_REDIRECT[role] ?? '/dashboard')
     } catch (err: unknown) {
       console.error('[login] error:', err)
       const code = (err as { code?: string }).code
