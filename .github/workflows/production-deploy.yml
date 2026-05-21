@@ -47,6 +47,8 @@ jobs:
         run: gcloud auth activate-service-account --key-file=/tmp/sa.json
 
       - name: Deploy to Firebase (hosting + rules + indexes + functions)
-        run: firebase deploy --only hosting,firestore:rules,firestore:indexes,functions --project pmtool-3f8db --force
+        run: |
+          firebase experiments:enable webframeworks
+          firebase deploy --only hosting,firestore:rules,firestore:indexes,functions --project pmtool-3f8db --force
         env:
           GOOGLE_APPLICATION_CREDENTIALS: /tmp/sa.json
