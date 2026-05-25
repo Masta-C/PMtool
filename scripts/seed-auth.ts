@@ -10,7 +10,7 @@ if (!getApps().length) initializeApp({ projectId: 'pmtool-3f8db' })
 const auth = getAuth()
 
 const users = [
-  { uid: 'test-super-admin', email: 'superadmin@pmtool.dev', password: 'Test1234!', displayName: 'Super Admin Test', role: 'super_admin' },
+  { uid: 'test-admin-2',     email: 'admin2@pmtool.dev',      password: 'Test1234!', displayName: 'Admin Test 2',      role: 'admin' },
   { uid: 'test-admin',       email: 'admin@pmtool.dev',      password: 'Test1234!', displayName: 'Admin Test',       role: 'admin' },
   { uid: 'test-supervisor',  email: 'supervisor@pmtool.dev', password: 'Test1234!', displayName: 'Supervisor Test',  role: 'supervisor' },
   { uid: 'test-operator',    email: 'operator@pmtool.dev',   password: 'Test1234!', displayName: 'Operator Test',    role: 'operator' },

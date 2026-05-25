@@ -3,16 +3,15 @@ service cloud.firestore {
   match /databases/{database}/documents {
     function isAuth() { return request.auth != null; }
     function role() { return request.auth.token.role; }
-    function isSuperAdmin() { return isAuth() && role() == 'super_admin'; }
-    function isAdmin() { return isAuth() && role() in ['super_admin', 'admin', 'supervisor']; }
+    function isAdmin() { return isAuth() && role() in ['admin', 'supervisor']; }
     function isOperatorOrQA() { return isAuth() && role() in ['operator', 'qa']; }
-    function isOperatorOrAbove() { return isAuth() && role() in ['super_admin', 'admin', 'supervisor', 'operator']; }
+    function isOperatorOrAbove() { return isAuth() && role() in ['admin', 'supervisor', 'operator']; }
     function isQA() { return isAuth() && role() == 'qa'; }
     match /users/{uid} {
       allow read: if isAdmin() || request.auth.uid == uid;
       allow create: if isAdmin();
       allow update: if isAdmin();
-      allow delete: if isSuperAdmin();
+      allow delete: if isAdmin();
     }
     match /workstations/{wsId} {
       // Any authenticated user can read workstation status (not sensitive)
@@ -23,7 +22,7 @@ service cloud.firestore {
       // a billable cross-document read on every operator status change
       allow update: if isOperatorOrAbove()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['machineStatus']);
-      allow delete: if isSuperAdmin();
+      allow delete: if isAdmin();
     }
     match /workOrders/{orderId} {
       // workOrders not yet wired to operator UI; operators/QA get read access by role
@@ -31,12 +30,12 @@ service cloud.firestore {
       allow read: if isAdmin() || isOperatorOrQA();
       allow create: if isAdmin();
       allow update: if isAdmin() || isOperatorOrQA();
-      allow delete: if isSuperAdmin();
+      allow delete: if isAdmin();
     }
     match /products/{productId} {
       allow read: if isAdmin();
       allow write: if isAdmin();
-      allow delete: if isSuperAdmin();
+      allow delete: if isAdmin();
     }
     match /auditLog/{logId} {
       allow read: if isAdmin();

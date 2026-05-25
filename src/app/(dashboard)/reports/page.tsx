@@ -1,10 +1,22 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useAuth } from '@/hooks/useAuth'
 import { useUsers } from '@/hooks/useUsers'
 import type { Role } from '@/types/user'
 import { STAGES, stationLabel } from '@/lib/stages'
+import { db } from '@/lib/firebase/client'
+import {
+  collectionGroup,
+  collection,
+  query,
+  where,
+  orderBy,
+  onSnapshot,
+  getDoc,
+  doc,
+  Timestamp,
+} from 'firebase/firestore'
 
 // ---------------------------------------------------------------------------
 // Access control
@@ -13,48 +25,31 @@ import { STAGES, stationLabel } from '@/lib/stages'
 const ALLOWED_ROLES: Role[] = ['qa', 'admin', 'supervisor']
 
 // ---------------------------------------------------------------------------
-// Mock data — Production runs
-// TODO: Replace with Firestore query: collection('productionRuns') filtered by
-//       workOrderId, stageId, operatorId, date range, result, reworkStatus
+// Firestore types
 // ---------------------------------------------------------------------------
 
-const MOCK_PRODUCTION_RUNS = [
-  { id: 'pr1',  orderNum: 'WO-2026-00001', stageId: 'stage_01', operatorId: 'OP-001', date: new Date(Date.now() - 1800000).toISOString(),   result: 'Pass' as const, reworkStatus: null },
-  { id: 'pr2',  orderNum: 'WO-2026-00002', stageId: 'stage_05', operatorId: 'OP-003', date: new Date(Date.now() - 3600000).toISOString(),   result: 'Fail' as const, reworkStatus: 'Pending' as const },
-  { id: 'pr3',  orderNum: 'WO-2026-00003', stageId: 'stage_01', operatorId: 'OP-001', date: new Date(Date.now() - 7200000).toISOString(),   result: 'Pass' as const, reworkStatus: null },
-  { id: 'pr4',  orderNum: 'WO-2026-00004', stageId: 'stage_08', operatorId: 'OP-002', date: new Date(Date.now() - 10800000).toISOString(),  result: 'Pass' as const, reworkStatus: null },
-  { id: 'pr5',  orderNum: 'WO-2026-00005', stageId: 'stage_03', operatorId: 'OP-001', date: new Date(Date.now() - 14400000).toISOString(),  result: 'Fail' as const, reworkStatus: 'Resolved' as const },
-  { id: 'pr6',  orderNum: 'WO-2026-00006', stageId: 'stage_09', operatorId: 'OP-004', date: new Date(Date.now() - 86400000).toISOString(),  result: 'Pass' as const, reworkStatus: null },
-  { id: 'pr7',  orderNum: 'WO-2026-00007', stageId: 'stage_11', operatorId: 'OP-002', date: new Date(Date.now() - 172800000).toISOString(), result: 'Fail' as const, reworkStatus: 'Pending' as const },
-  { id: 'pr8',  orderNum: 'WO-2026-00008', stageId: 'stage_09', operatorId: 'OP-002', date: new Date(Date.now() - 259200000).toISOString(), result: 'Fail' as const, reworkStatus: 'Resolved' as const },
-  { id: 'pr9',  orderNum: 'WO-2026-00009', stageId: 'stage_04', operatorId: 'OP-003', date: new Date(Date.now() - 345600000).toISOString(), result: 'Pass' as const, reworkStatus: null },
-  { id: 'pr10', orderNum: 'WO-2026-00010', stageId: 'stage_07', operatorId: 'OP-001', date: new Date(Date.now() - 432000000).toISOString(), result: 'Pass' as const, reworkStatus: null },
-]
+interface StageHistoryDoc {
+  stageId: string
+  operatorId: string
+  overallResult: 'PASSED' | 'FAILED_ACCEPTED' | 'REWORK'
+  failedCount?: number
+  totalCount?: number
+  comment?: string
+  submittedAt: Timestamp | null
+  startedAt?: Timestamp | null
+  parameters?: { parameterId: string; name: string; numericValue?: string | number; passed: boolean }[]
+}
 
-// Mock data — Rework items
-// TODO: Replace with Firestore query: collection('reworkItems') where status != 'Resolved'
-const MOCK_REWORK_ITEMS = [
-  { id: 'rw1', orderNum: 'WO-2026-00002', stageId: 'stage_05', operatorId: 'OP-003', dateTagged: new Date(Date.now() - 3600000).toISOString(),   status: 'Pending' as const },
-  { id: 'rw2', orderNum: 'WO-2026-00007', stageId: 'stage_11', operatorId: 'OP-002', dateTagged: new Date(Date.now() - 172800000).toISOString(), status: 'In Correction' as const },
-]
-
-// ---------------------------------------------------------------------------
-// Mock QA data — Failure history & Tamper Test
-// ---------------------------------------------------------------------------
-
-const MOCK_FAILURES = [
-  { id: 'f1', date: new Date(Date.now() - 3600000).toISOString(),   serialNumber: 'WO-2026-00002', meterType: 'EM-400', stage: 'Functional Testing',          stageId: 'stage_05', parameter: 'Relay Functional Testing', value: '0.23V',    result: 'NOT OK', taggedTo: 'Base Assembly',                operatorId: 'OP-003' },
-  { id: 'f2', date: new Date(Date.now() - 7200000).toISOString(),   serialNumber: 'WO-2026-00005', meterType: 'EM-500', stage: 'PCBA Incoming / Store',        stageId: 'stage_03', parameter: 'Power Supply Test',        value: 'Irregular', result: 'NOT OK', taggedTo: 'PCBA Incoming / Store',         operatorId: 'OP-001' },
-  { id: 'f3', date: new Date(Date.now() - 10800000).toISOString(),  serialNumber: 'WO-2026-00008', meterType: 'EM-400', stage: 'HV-IR Test',                  stageId: 'stage_09', parameter: 'AC High Voltage Test',     value: '4.1kV',    result: 'NOT OK', taggedTo: 'Base Assembly',                operatorId: 'OP-002' },
-  { id: 'f4', date: new Date(Date.now() - 14400000).toISOString(),  serialNumber: 'WO-2026-00011', meterType: 'EM-400', stage: 'Final Testing',               stageId: 'stage_11', parameter: 'Limits of Error Test',     value: '±2.8%',    result: 'REMARK', taggedTo: null,                           operatorId: 'OP-004' },
-  { id: 'f5', date: new Date(Date.now() - 18000000).toISOString(),  serialNumber: 'WO-2026-00003', meterType: 'EM-500', stage: 'Incoming Inspection / Stores', stageId: 'stage_01', parameter: 'Battery',                  value: '3.1V',     result: 'NOT OK', taggedTo: 'Incoming Inspection / Stores', operatorId: 'OP-001' },
-]
-
-const MOCK_TAMPER_SAMPLES = [
-  { id: 't1', date: new Date(Date.now() - 5400000).toISOString(),    serialNumber: 'WO-2026-00004', meterType: 'EM-400', tamper38: { value: 'Pass', result: 'OK'     }, magneticTamper: { value: 'Pass', result: 'OK'     }, esd35kv: { value: 'Pass', result: 'OK' }, overall: 'PASSED', operatorId: 'OP-002' },
-  { id: 't2', date: new Date(Date.now() - 86400000).toISOString(),   serialNumber: 'WO-2026-00009', meterType: 'EM-500', tamper38: { value: 'Pass', result: 'OK'     }, magneticTamper: { value: 'Fail', result: 'NOT OK' }, esd35kv: { value: 'Pass', result: 'OK' }, overall: 'FAILED', operatorId: 'OP-003' },
-  { id: 't3', date: new Date(Date.now() - 172800000).toISOString(),  serialNumber: 'WO-2026-00015', meterType: 'EM-400', tamper38: { value: 'Pass', result: 'OK'     }, magneticTamper: { value: 'Pass', result: 'OK'     }, esd35kv: { value: 'Pass', result: 'OK' }, overall: 'PASSED', operatorId: 'OP-001' },
-]
+interface MeterDoc {
+  serialNumber: string
+  meterType: string
+  status: string
+  currentStageId?: string
+  taggedFromStageId?: string
+  reworkCount?: number
+  createdAt?: Timestamp | null
+  assignedOperatorId?: string
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -91,12 +86,54 @@ interface TamperFilters {
   overall: TamperOverallFilter
 }
 
+// Normalised row types
+interface ProductionRow {
+  id: string
+  orderNum: string
+  stageId: string
+  operatorId: string
+  date: string
+  result: 'Pass' | 'Fail'
+  reworkStatus: 'Pending' | 'In Correction' | null
+}
+
+interface ReworkRow {
+  id: string
+  orderNum: string
+  stageId: string
+  assignedOperatorId: string
+  dateTagged: string
+  status: 'Pending' | 'In Correction'
+}
+
+interface FailureRow {
+  id: string
+  date: string
+  serialNumber: string
+  meterType: string
+  stageId: string
+  parameter: string
+  value: string
+  result: 'NOT OK'
+  taggedTo: string | null
+  operatorId: string
+}
+
+interface TamperRow {
+  id: string
+  date: string
+  serialNumber: string
+  meterType: string
+  tamper38: { value: string; result: string }
+  magneticTamper: { value: string; result: string }
+  esd35kv: { value: string; result: string }
+  overall: string
+  operatorId: string
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-const ALL_STAGE_IDS_QA = Array.from(new Set(MOCK_FAILURES.map(f => f.stageId)))
-const ALL_METER_TYPES = Array.from(new Set(MOCK_FAILURES.map(f => f.meterType).concat(MOCK_TAMPER_SAMPLES.map(t => t.meterType))))
 
 function formatDateTime(iso: string) {
   const d = new Date(iso)
@@ -135,6 +172,19 @@ function downloadCsv(filename: string, headers: string[], rows: string[][]) {
 
 function operatorName(id: string, lookup?: Record<string, string>): string {
   return lookup?.[id] ?? id
+}
+
+function toIso(ts: Timestamp | null | undefined): string {
+  if (!ts) return new Date().toISOString()
+  return ts.toDate().toISOString()
+}
+
+/** Fetch parent meter doc for a stageHistory document reference path like
+ *  "meters/{meterId}/stageHistory/{attemptId}" */
+function meterIdFromPath(path: string): string {
+  // path = "meters/<meterId>/stageHistory/<attemptId>"
+  const parts = path.split('/')
+  return parts[1] ?? ''
 }
 
 // ---------------------------------------------------------------------------
@@ -199,7 +249,6 @@ function TableFooter({ count, noun }: { count: number; noun: string }) {
 function ProductionTab() {
   const { users } = useUsers()
 
-  // Build a uid → display name lookup for all operators (active and inactive)
   const operatorUsers = useMemo(
     () => users.filter(u => u.role === 'operator'),
     [users]
@@ -219,32 +268,96 @@ function ProductionTab() {
   })
   const [sortDir, setSortDir] = useState<SortDir>('desc')
 
+  // Live data from Firestore
+  const [rows, setRows] = useState<ProductionRow[]>([])
+  const [loadingData, setLoadingData] = useState(true)
+
+  useEffect(() => {
+    // Load last 30 days as the default window; filter client-side to avoid compound index requirements
+    const windowStart = new Date()
+    windowStart.setDate(windowStart.getDate() - 30)
+
+    const q = query(
+      collectionGroup(db, 'stageHistory'),
+      where('submittedAt', '>=', Timestamp.fromDate(windowStart)),
+      orderBy('submittedAt', 'desc')
+    )
+
+    // Cache of meterId → MeterDoc to avoid duplicate reads
+    const meterCache: Record<string, MeterDoc> = {}
+
+    const unsub = onSnapshot(q, async snap => {
+      // Collect unique meterIds that are not yet cached
+      const newMeterIds = Array.from(
+        new Set(snap.docs.map(d => meterIdFromPath(d.ref.path)))
+      ).filter(id => id && !(id in meterCache))
+
+      // Fetch missing meter docs
+      await Promise.all(
+        newMeterIds.map(async meterId => {
+          try {
+            const meterSnap = await getDoc(doc(db, 'meters', meterId))
+            if (meterSnap.exists()) {
+              meterCache[meterId] = meterSnap.data() as MeterDoc
+            }
+          } catch {
+            // Ignore individual fetch errors
+          }
+        })
+      )
+
+      const mapped: ProductionRow[] = snap.docs.map(d => {
+        const data = d.data() as StageHistoryDoc
+        const meterId = meterIdFromPath(d.ref.path)
+        const meter = meterCache[meterId]
+        const result: 'Pass' | 'Fail' = data.overallResult === 'REWORK' ? 'Fail' : 'Pass'
+        const reworkStatus: 'Pending' | 'In Correction' | null =
+          data.overallResult === 'REWORK' ? 'Pending' : null
+
+        return {
+          id: d.id,
+          orderNum: meter?.serialNumber ?? meterId,
+          stageId: data.stageId,
+          operatorId: data.operatorId,
+          date: toIso(data.submittedAt),
+          result,
+          reworkStatus,
+        }
+      })
+
+      setRows(mapped)
+      setLoadingData(false)
+    })
+
+    return unsub
+  }, [])
+
   function updateFilter<K extends keyof ProductionFilters>(key: K, val: ProductionFilters[K]) {
     setFilters(prev => ({ ...prev, [key]: val }))
   }
 
   const filtered = useMemo(() => {
-    let rows = MOCK_PRODUCTION_RUNS.filter(r => {
+    let result = rows.filter(r => {
       if (filters.station !== 'all' && r.stageId !== filters.station) return false
       if (!inDateRange(r.date, filters.dateFrom, filters.dateTo)) return false
       if (filters.operator !== 'all' && r.operatorId !== filters.operator) return false
       if (filters.result !== 'all' && r.result !== filters.result) return false
       if (filters.reworkResult !== 'all') {
         if (filters.reworkResult === 'Pending' && r.reworkStatus !== 'Pending') return false
-        if (filters.reworkResult === 'Resolved' && r.reworkStatus !== 'Resolved') return false
+        if (filters.reworkResult === 'Resolved' && r.reworkStatus !== null) return false
       }
       return true
     })
-    rows = [...rows].sort((a, b) => {
+    result = [...result].sort((a, b) => {
       const diff = new Date(a.date).getTime() - new Date(b.date).getTime()
       return sortDir === 'desc' ? -diff : diff
     })
-    return rows
-  }, [filters, sortDir])
+    return result
+  }, [rows, filters, sortDir])
 
   function handleExport() {
     const headers = ['Order #', 'Station', 'Operator', 'Date', 'Result', 'Rework Status']
-    const rows = filtered.map(r => [
+    const exportRows = filtered.map(r => [
       r.orderNum,
       stationLabel(r.stageId),
       operatorName(r.operatorId, operatorLookup),
@@ -252,7 +365,7 @@ function ProductionTab() {
       r.result,
       r.reworkStatus ?? '—',
     ])
-    downloadCsv(`pmtool-production-${new Date().toISOString().slice(0, 10)}.csv`, headers, rows)
+    downloadCsv(`pmtool-production-${new Date().toISOString().slice(0, 10)}.csv`, headers, exportRows)
   }
 
   return (
@@ -340,7 +453,13 @@ function ProductionTab() {
               </tr>
             </thead>
             <tbody>
-              {filtered.length === 0 ? (
+              {loadingData ? (
+                <tr>
+                  <td colSpan={6} className="text-center py-10 text-gray-400 text-sm">
+                    Loading production runs…
+                  </td>
+                </tr>
+              ) : filtered.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="text-center py-10 text-gray-400 text-sm">
                     No production runs match the current filters.
@@ -381,9 +500,33 @@ function ProductionTab() {
 // ---------------------------------------------------------------------------
 
 function ReworkTab() {
-  // TODO: Replace with Firestore query: collection('reworkItems') where
-  //       status in ['Pending', 'In Correction'] (not yet re-submitted and passed)
-  const rows = MOCK_REWORK_ITEMS
+  const [rows, setRows] = useState<ReworkRow[]>([])
+  const [loadingData, setLoadingData] = useState(true)
+
+  useEffect(() => {
+    const q = query(
+      collection(db, 'meters'),
+      where('status', '==', 'rework')
+    )
+
+    const unsub = onSnapshot(q, snap => {
+      const mapped: ReworkRow[] = snap.docs.map(d => {
+        const data = d.data() as MeterDoc
+        return {
+          id: d.id,
+          orderNum: data.serialNumber ?? d.id,
+          stageId: data.taggedFromStageId ?? '',
+          assignedOperatorId: data.assignedOperatorId ?? '',
+          dateTagged: toIso(data.createdAt),
+          status: 'Pending' as const,
+        }
+      })
+      setRows(mapped)
+      setLoadingData(false)
+    })
+
+    return unsub
+  }, [])
 
   return (
     <div className="flex flex-col gap-5">
@@ -417,7 +560,13 @@ function ReworkTab() {
               </tr>
             </thead>
             <tbody>
-              {rows.length === 0 ? (
+              {loadingData ? (
+                <tr>
+                  <td colSpan={5} className="text-center py-10 text-gray-400 text-sm">
+                    Loading rework items…
+                  </td>
+                </tr>
+              ) : rows.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="text-center py-10 text-gray-400 text-sm">
                     No open rework items.
@@ -432,7 +581,7 @@ function ReworkTab() {
                   >
                     <td className="px-4 py-3 font-mono text-gray-800 whitespace-nowrap">{r.orderNum}</td>
                     <td className="px-4 py-3 text-gray-700 whitespace-nowrap">{stationLabel(r.stageId)}</td>
-                    <td className="px-4 py-3 text-gray-700 whitespace-nowrap">{operatorName(r.operatorId)}</td>
+                    <td className="px-4 py-3 text-gray-700 whitespace-nowrap">{operatorName(r.assignedOperatorId)}</td>
                     <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{formatDateTime(r.dateTagged)}</td>
                     <td className="px-4 py-3 whitespace-nowrap"><ResultBadge result={r.status} /></td>
                   </tr>
@@ -451,12 +600,12 @@ function ReworkTab() {
 // QA tab — Failure History sub-tab
 // ---------------------------------------------------------------------------
 
-function QaSummaryPanel() {
-  const todayFailures = MOCK_FAILURES.filter(f => isToday(f.date))
+function QaSummaryPanel({ failures }: { failures: FailureRow[] }) {
+  const todayFailures = failures.filter(f => isToday(f.date))
 
   const stageCounts: Record<string, number> = {}
   const paramCounts: Record<string, number> = {}
-  MOCK_FAILURES.forEach(f => {
+  failures.forEach(f => {
     stageCounts[f.stageId] = (stageCounts[f.stageId] ?? 0) + 1
     paramCounts[f.parameter] = (paramCounts[f.parameter] ?? 0) + 1
   })
@@ -493,6 +642,76 @@ function SummaryCard({ label, value, color, small }: { label: string; value: str
 }
 
 function FailureHistoryTab() {
+  const [allFailures, setAllFailures] = useState<FailureRow[]>([])
+  const [allMeterTypes, setAllMeterTypes] = useState<string[]>([])
+  const [loadingData, setLoadingData] = useState(true)
+
+  useEffect(() => {
+    // Query stageHistory where overallResult === 'REWORK'
+    const q = query(
+      collectionGroup(db, 'stageHistory'),
+      where('overallResult', '==', 'REWORK'),
+      orderBy('submittedAt', 'desc')
+    )
+
+    const meterCache: Record<string, MeterDoc> = {}
+
+    const unsub = onSnapshot(q, async snap => {
+      const newMeterIds = Array.from(
+        new Set(snap.docs.map(d => meterIdFromPath(d.ref.path)))
+      ).filter(id => id && !(id in meterCache))
+
+      await Promise.all(
+        newMeterIds.map(async meterId => {
+          try {
+            const meterSnap = await getDoc(doc(db, 'meters', meterId))
+            if (meterSnap.exists()) {
+              meterCache[meterId] = meterSnap.data() as MeterDoc
+            }
+          } catch {
+            // ignore
+          }
+        })
+      )
+
+      const mapped: FailureRow[] = snap.docs.map(d => {
+        const data = d.data() as StageHistoryDoc
+        const meterId = meterIdFromPath(d.ref.path)
+        const meter = meterCache[meterId]
+
+        // Find first failed parameter
+        const firstFailed = data.parameters?.find(p => !p.passed)
+        const paramName = firstFailed?.name ?? '—'
+        const paramValue = firstFailed?.numericValue != null ? String(firstFailed.numericValue) : '—'
+
+        return {
+          id: d.id,
+          date: toIso(data.submittedAt),
+          serialNumber: meter?.serialNumber ?? meterId,
+          meterType: meter?.meterType ?? '—',
+          stageId: data.stageId,
+          parameter: paramName,
+          value: paramValue,
+          result: 'NOT OK' as const,
+          taggedTo: meter?.taggedFromStageId ? stationLabel(meter.taggedFromStageId) : null,
+          operatorId: data.operatorId,
+        }
+      })
+
+      const types = Array.from(new Set(mapped.map(f => f.meterType).filter(t => t !== '—')))
+      setAllMeterTypes(types)
+      setAllFailures(mapped)
+      setLoadingData(false)
+    })
+
+    return unsub
+  }, [])
+
+  const allStageIds = useMemo(
+    () => Array.from(new Set(allFailures.map(f => f.stageId))),
+    [allFailures]
+  )
+
   const [filters, setFilters] = useState<FailureFilters>({
     dateFrom: '',
     dateTo: '',
@@ -507,7 +726,7 @@ function FailureHistoryTab() {
   }
 
   const filtered = useMemo(() => {
-    let rows = MOCK_FAILURES.filter(f => {
+    let rows = allFailures.filter(f => {
       if (!inDateRange(f.date, filters.dateFrom, filters.dateTo)) return false
       if (filters.stage !== 'all' && f.stageId !== filters.stage) return false
       if (filters.result !== 'all' && f.result !== filters.result) return false
@@ -519,19 +738,19 @@ function FailureHistoryTab() {
       return sortDir === 'desc' ? -diff : diff
     })
     return rows
-  }, [filters, sortDir])
+  }, [allFailures, filters, sortDir])
 
   function handleExport() {
     const headers = ['Date', 'Serial Number', 'Meter Type', 'Stage', 'Parameter', 'Recorded Value', 'Result', 'Tagged To', 'Operator']
-    const rows = filtered.map(f => [
-      formatDateTime(f.date), f.serialNumber, f.meterType, f.stage, f.parameter, f.value, f.result, f.taggedTo ?? '', f.operatorId,
+    const exportRows = filtered.map(f => [
+      formatDateTime(f.date), f.serialNumber, f.meterType, stationLabel(f.stageId), f.parameter, f.value, f.result, f.taggedTo ?? '', f.operatorId,
     ])
-    downloadCsv(`pmtool-failures-${new Date().toISOString().slice(0, 10)}.csv`, headers, rows)
+    downloadCsv(`pmtool-failures-${new Date().toISOString().slice(0, 10)}.csv`, headers, exportRows)
   }
 
   return (
     <div className="flex flex-col gap-5">
-      <QaSummaryPanel />
+      <QaSummaryPanel failures={allFailures} />
 
       {/* Filters */}
       <div
@@ -547,13 +766,13 @@ function FailureHistoryTab() {
         <FilterField label="Stage">
           <select value={filters.stage} onChange={e => updateFilter('stage', e.target.value)} className={INPUT_CLS}>
             <option value="all">All stages</option>
-            {ALL_STAGE_IDS_QA.map(id => <option key={id} value={id}>{stationLabel(id)}</option>)}
+            {allStageIds.map(id => <option key={id} value={id}>{stationLabel(id)}</option>)}
           </select>
         </FilterField>
         <FilterField label="Meter type">
           <select value={filters.meterType} onChange={e => updateFilter('meterType', e.target.value)} className={INPUT_CLS}>
             <option value="all">All types</option>
-            {ALL_METER_TYPES.map(m => <option key={m} value={m}>{m}</option>)}
+            {allMeterTypes.map(m => <option key={m} value={m}>{m}</option>)}
           </select>
         </FilterField>
         <FilterField label="Result">
@@ -603,7 +822,13 @@ function FailureHistoryTab() {
               </tr>
             </thead>
             <tbody>
-              {filtered.length === 0 ? (
+              {loadingData ? (
+                <tr>
+                  <td colSpan={9} className="text-center py-10 text-gray-400 text-sm">
+                    Loading failure history…
+                  </td>
+                </tr>
+              ) : filtered.length === 0 ? (
                 <tr>
                   <td colSpan={9} className="text-center py-10 text-gray-400 text-sm">
                     No records match the current filters.
@@ -642,6 +867,73 @@ function FailureHistoryTab() {
 // ---------------------------------------------------------------------------
 
 function TamperTestTab() {
+  const [allTamper, setAllTamper] = useState<TamperRow[]>([])
+  const [loadingData, setLoadingData] = useState(true)
+
+  useEffect(() => {
+    // stageHistory where stageId === 'stage_08' (tamper test stage)
+    const q = query(
+      collectionGroup(db, 'stageHistory'),
+      where('stageId', '==', 'stage_08'),
+      orderBy('submittedAt', 'desc')
+    )
+
+    const meterCache: Record<string, MeterDoc> = {}
+
+    const unsub = onSnapshot(q, async snap => {
+      const newMeterIds = Array.from(
+        new Set(snap.docs.map(d => meterIdFromPath(d.ref.path)))
+      ).filter(id => id && !(id in meterCache))
+
+      await Promise.all(
+        newMeterIds.map(async meterId => {
+          try {
+            const meterSnap = await getDoc(doc(db, 'meters', meterId))
+            if (meterSnap.exists()) {
+              meterCache[meterId] = meterSnap.data() as MeterDoc
+            }
+          } catch {
+            // ignore
+          }
+        })
+      )
+
+      const mapped: TamperRow[] = snap.docs.map(d => {
+        const data = d.data() as StageHistoryDoc
+        const meterId = meterIdFromPath(d.ref.path)
+        const meter = meterCache[meterId]
+        const params = data.parameters ?? []
+
+        function paramResult(name: string) {
+          const p = params.find(x => x.name.toLowerCase().includes(name.toLowerCase()))
+          if (!p) return { value: '—', result: '—' }
+          return { value: p.passed ? 'Pass' : 'Fail', result: p.passed ? 'OK' : 'NOT OK' }
+        }
+
+        const overall =
+          data.overallResult === 'PASSED' ? 'PASSED' :
+          data.overallResult === 'REWORK' ? 'FAILED' : 'PASSED'
+
+        return {
+          id: d.id,
+          date: toIso(data.submittedAt),
+          serialNumber: meter?.serialNumber ?? meterId,
+          meterType: meter?.meterType ?? '—',
+          tamper38: paramResult('neutral'),
+          magneticTamper: paramResult('magnetic'),
+          esd35kv: paramResult('earth'),
+          overall,
+          operatorId: data.operatorId,
+        }
+      })
+
+      setAllTamper(mapped)
+      setLoadingData(false)
+    })
+
+    return unsub
+  }, [])
+
   const [filters, setFilters] = useState<TamperFilters>({
     dateFrom: '',
     dateTo: '',
@@ -653,18 +945,18 @@ function TamperTestTab() {
   }
 
   const filtered = useMemo(() => {
-    return MOCK_TAMPER_SAMPLES
+    return allTamper
       .filter(t => {
         if (!inDateRange(t.date, filters.dateFrom, filters.dateTo)) return false
         if (filters.overall !== 'all' && t.overall !== filters.overall) return false
         return true
       })
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-  }, [filters])
+  }, [allTamper, filters])
 
   function handleExport() {
     const headers = ['Date', 'Serial Number', 'Meter Type', '38 Tamper Test', 'Magnetic Tamper', '35KV ESD', 'Overall', 'Operator']
-    const rows = filtered.map(t => [
+    const exportRows = filtered.map(t => [
       formatDateTime(t.date),
       t.serialNumber,
       t.meterType,
@@ -674,7 +966,7 @@ function TamperTestTab() {
       t.overall,
       t.operatorId,
     ])
-    downloadCsv(`pmtool-tamper-${new Date().toISOString().slice(0, 10)}.csv`, headers, rows)
+    downloadCsv(`pmtool-tamper-${new Date().toISOString().slice(0, 10)}.csv`, headers, exportRows)
   }
 
   return (
@@ -739,7 +1031,13 @@ function TamperTestTab() {
               </tr>
             </thead>
             <tbody>
-              {filtered.length === 0 ? (
+              {loadingData ? (
+                <tr>
+                  <td colSpan={8} className="text-center py-10 text-gray-400 text-sm">
+                    Loading tamper test samples…
+                  </td>
+                </tr>
+              ) : filtered.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="text-center py-10 text-gray-400 text-sm">
                     No Tamper Test samples match the current filters.
