@@ -1,6 +1,6 @@
 'use client'
 import { useState } from 'react'
-import { signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth'
+import { signInWithEmailAndPassword } from 'firebase/auth'
 import { useRouter } from 'next/navigation'
 import { auth } from '@/lib/firebase/client'
 import type { Role } from '@/types/user'
@@ -13,8 +13,6 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-  const [resetSent, setResetSent] = useState(false)
-  const [resetLoading, setResetLoading] = useState(false)
   const router = useRouter()
 
   async function handleLogin(e: React.FormEvent) {
@@ -52,35 +50,11 @@ export default function LoginPage() {
     }
   }
 
-  async function handleForgotPassword() {
-    if (!email) {
-      setError('Enter your email address first, then click Forgot password.')
-      return
-    }
-    setResetLoading(true)
-    setError(null)
-    try {
-      await sendPasswordResetEmail(auth, email)
-      setResetSent(true)
-    } catch (err: unknown) {
-      const code = (err as { code?: string }).code
-      if (code === 'auth/user-not-found') setError('No account found with this email.')
-      else setError('Could not send reset email. Please try again.')
-    } finally {
-      setResetLoading(false)
-    }
-  }
-
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="w-full max-w-sm bg-white rounded-xl shadow-md p-8">
         <h1 className="text-2xl font-bold text-gray-900 mb-1">PMtool</h1>
         <p className="text-sm text-gray-500 mb-6">Sign in to your account</p>
-        {resetSent ? (
-          <div className="rounded-lg bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-700">
-            Password reset email sent to <span className="font-semibold">{email}</span>. Check your inbox.
-          </div>
-        ) : (
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
@@ -110,18 +84,10 @@ export default function LoginPage() {
             <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors">
               {loading ? 'Signing in...' : 'Sign in'}
             </button>
-            <div className="text-center">
-              <button
-                type="button"
-                onClick={handleForgotPassword}
-                disabled={resetLoading}
-                className="text-xs text-blue-600 hover:text-blue-800 disabled:opacity-50 transition-colors"
-              >
-                {resetLoading ? 'Sending…' : 'Forgot password?'}
-              </button>
-            </div>
+            <p className="text-center text-xs text-gray-400">
+              Forgot your password? Contact your administrator to reset it.
+            </p>
           </form>
-        )}
         <p className="text-xs text-gray-400 mt-4 text-center">Contact your administrator if you need access.</p>
       </div>
     </div>
