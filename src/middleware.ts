@@ -27,8 +27,8 @@ export function middleware(request: NextRequest) {
 
   const session = request.cookies.get('__session')
 
-  // If already authenticated, redirect away from login to the right home screen
-  if (pathname === '/login') {
+  // If already authenticated, redirect away from login pages to the right home screen
+  if (pathname === '/login' || pathname === '/admin/login') {
     if (session?.value) {
       const role = getSessionRole(session.value)
       if (role === 'operator') return noCache(NextResponse.redirect(new URL('/operator', request.url)))
