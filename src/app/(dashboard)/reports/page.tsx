@@ -417,7 +417,13 @@ function ProductionTab() {
           </select>
         </FilterField>
 
-        <div className="ml-auto self-end">
+        <div className="ml-auto self-end flex gap-2">
+          <button
+            onClick={() => setFilters({ station: 'all', dateFrom: '', dateTo: '', operator: 'all', result: 'all', reworkResult: 'all' })}
+            className="px-3 py-2 rounded-lg text-sm font-medium border border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors"
+          >
+            Clear filters
+          </button>
           <button
             onClick={handleExport}
             className="px-4 py-2 rounded-lg text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90"
@@ -783,7 +789,13 @@ function FailureHistoryTab() {
           </select>
         </FilterField>
 
-        <div className="ml-auto self-end">
+        <div className="ml-auto self-end flex gap-2">
+          <button
+            onClick={() => setFilters({ dateFrom: '', dateTo: '', stage: 'all', result: 'all', meterType: 'all' })}
+            className="px-3 py-2 rounded-lg text-sm font-medium border border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors"
+          >
+            Clear filters
+          </button>
           <button
             onClick={handleExport}
             className="px-4 py-2 rounded-lg text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90"
@@ -1000,7 +1012,13 @@ function TamperTestTab() {
           </div>
         </FilterField>
 
-        <div className="ml-auto self-end">
+        <div className="ml-auto self-end flex gap-2">
+          <button
+            onClick={() => setFilters({ dateFrom: '', dateTo: '', overall: 'all' })}
+            className="px-3 py-2 rounded-lg text-sm font-medium border border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors"
+          >
+            Clear filters
+          </button>
           <button
             onClick={handleExport}
             className="px-4 py-2 rounded-lg text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90"

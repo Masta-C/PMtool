@@ -6,6 +6,8 @@ import { ConfirmDialog } from '@/components/shared/ConfirmDialog'
 import { createUserFn, setUserRoleFn, deleteUserFn, resetUserPasswordFn } from '@/lib/firebase/functions'
 import { stationLabel } from '@/lib/stages'
 import type { Role, AppUser } from '@/types/user'
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
+import { db } from '@/lib/firebase/client'
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -187,10 +189,26 @@ export default function TeamPage() {
   // ---------------------------------------------------------------------------
 
   async function handleDelete() {
-    if (!deleteTarget) return
+    if (!deleteTarget || !currentUser) return
     setDeleting(true)
     try {
       await deleteUserFn({ targetUid: deleteTarget.uid })
+      // Write audit log — immutable record of the deletion
+      await addDoc(collection(db, 'auditLog'), {
+        action: 'USER_DELETED',
+        actorUid: currentUser.uid,
+        actorRole: currentRole,
+        targetMeterId: null,
+        stageId: null,
+        before: {
+          uid: deleteTarget.uid,
+          displayName: deleteTarget.displayName,
+          email: deleteTarget.email,
+          role: deleteTarget.role,
+        },
+        after: null,
+        timestamp: serverTimestamp(),
+      })
       setDeleteTarget(null)
     } catch (err: unknown) {
       alert((err as { message?: string }).message ?? 'Delete failed.')
@@ -204,12 +222,27 @@ export default function TeamPage() {
   // ---------------------------------------------------------------------------
 
   async function handleResetPassword() {
-    if (!resetTarget) return
+    if (!resetTarget || !currentUser) return
     setResetting(true)
     setResetError(null)
     const newPassword = generatePassword()
     try {
       await resetUserPasswordFn({ targetUid: resetTarget.uid, newPassword })
+      // Write audit log — records who reset whose password and when
+      await addDoc(collection(db, 'auditLog'), {
+        action: 'PASSWORD_RESET',
+        actorUid: currentUser.uid,
+        actorRole: currentRole,
+        targetMeterId: null,
+        stageId: null,
+        before: null,
+        after: {
+          uid: resetTarget.uid,
+          displayName: resetTarget.displayName,
+          email: resetTarget.email,
+        },
+        timestamp: serverTimestamp(),
+      })
       const displayName = resetTarget.displayName
       setResetTarget(null)
       // Reuse the postSave banner to reveal the new password
@@ -365,7 +398,7 @@ export default function TeamPage() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex gap-3">
-                      {currentRole === 'admin' && (
+                      {(currentRole === 'admin' || currentRole === 'supervisor') && (
                         <button
                           onClick={() => openEdit(u)}
                           className="text-xs font-medium transition-opacity hover:opacity-70"
@@ -374,7 +407,7 @@ export default function TeamPage() {
                           Edit
                         </button>
                       )}
-                      {currentRole === 'admin' && (
+                      {(currentRole === 'admin' || currentRole === 'supervisor') && (
                         <button
                           onClick={() => { setResetTarget(u); setResetError(null) }}
                           className="text-xs font-medium text-amber-500 hover:text-amber-400 transition-colors"
@@ -382,7 +415,7 @@ export default function TeamPage() {
                           Reset Password
                         </button>
                       )}
-                      {currentRole === 'admin' && u.uid !== currentUser?.uid && (
+                      {(currentRole === 'admin' || currentRole === 'supervisor') && u.uid !== currentUser?.uid && (
                         <button
                           onClick={() => setDeleteTarget(u)}
                           className="text-xs font-medium text-red-400 hover:text-red-300 transition-colors"
@@ -571,9 +604,9 @@ export default function TeamPage() {
       {/* Delete confirm dialog */}
       <ConfirmDialog
         open={!!deleteTarget}
-        title="Delete User"
-        message={`Delete ${deleteTarget?.displayName ?? 'this user'}? Their account will be permanently removed and they will lose access immediately.`}
-        confirmLabel={deleting ? 'Deleting…' : 'Delete User'}
+        title="⚠️ Delete User"
+        message={`You are about to permanently delete ${deleteTarget?.displayName ?? 'this user'} (${deleteTarget?.email ?? ''}). Their account will be removed immediately and this action cannot be undone. This will be logged in the audit trail.`}
+        confirmLabel={deleting ? 'Deleting…' : 'Yes, Delete Permanently'}
         dangerous
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}
@@ -588,7 +621,7 @@ export default function TeamPage() {
           >
             <h2 className="text-lg font-semibold text-gray-900 mb-1">Reset Password</h2>
             <p className="text-sm text-gray-500 mb-4">
-              Reset password for <span className="font-semibold text-gray-700">{resetTarget.displayName}</span>? A new temporary password will be generated — they will need to use it immediately.
+              Reset password for <span className="font-semibold text-gray-700">{resetTarget.displayName}</span>? A new temporary password will be generated and shown once. Share it with them securely. This action will be recorded in the audit log.
             </p>
             {resetError && <p className="text-sm text-red-500 mb-3">{resetError}</p>}
             <div className="flex gap-3 justify-end">

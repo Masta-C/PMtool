@@ -14,6 +14,8 @@ type ActionType =
   | 'DRAFT_SAVED'
   | 'SUPERVISOR_OVERRIDE'
   | 'USER_CREATED'
+  | 'USER_DELETED'
+  | 'PASSWORD_RESET'
   | 'OPERATOR_ASSIGNED'
 
 interface AuditEntry {
@@ -112,6 +114,8 @@ const ACTION_LABELS: Record<ActionType, string> = {
   DRAFT_SAVED: 'Draft Saved',
   SUPERVISOR_OVERRIDE: 'Supervisor Override',
   USER_CREATED: 'User Created',
+  USER_DELETED: 'User Deleted',
+  PASSWORD_RESET: 'Password Reset',
   OPERATOR_ASSIGNED: 'Operator Assigned',
 }
 
@@ -122,6 +126,8 @@ const ACTION_BADGE: Record<ActionType, string> = {
   SUPERVISOR_OVERRIDE: 'bg-red-100 text-red-700',
   DRAFT_SAVED: 'bg-gray-100 text-gray-600',
   USER_CREATED: 'bg-blue-100 text-blue-700',
+  USER_DELETED: 'bg-red-100 text-red-700',
+  PASSWORD_RESET: 'bg-amber-100 text-amber-700',
   OPERATOR_ASSIGNED: 'bg-blue-100 text-blue-700',
 }
 
