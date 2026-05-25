@@ -974,6 +974,7 @@ function StationCard({
   savedOperator,
   draftOperator,
   saveStatus,
+  conflictStation,
   onOperatorDraft,
   onSaveOperator,
   operatorOptions,
@@ -991,6 +992,7 @@ function StationCard({
   savedOperator: string
   draftOperator: string | undefined
   saveStatus: SaveStatus
+  conflictStation: string | null   // name of station the selected operator is already at
   onOperatorDraft: (stageId: string, op: string) => void
   onSaveOperator: (stageId: string) => void
   operatorOptions: OperatorOption[]
@@ -1084,6 +1086,13 @@ function StationCard({
               </option>
             ))}
           </select>
+
+          {/* Conflict warning — operator already assigned elsewhere */}
+          {conflictStation && (
+            <p className="mt-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 leading-snug">
+              ⚠️ Already at <span className="font-semibold">{conflictStation}</span>. Saving will move them here.
+            </p>
+          )}
 
           {/* Save Info button */}
           <button
@@ -1295,6 +1304,18 @@ function WorkstationsPageInner() {
     }
   }, [savedOperators, draftOperators])
 
+  // Returns the station name the drafted operator is already assigned to (if any)
+  const getConflictStation = useCallback((stageId: string): string | null => {
+    const draftOp = draftOperators[stageId]
+    if (!draftOp || draftOp === UNASSIGNED_VALUE) return null
+    if (draftOp === savedOperators[stageId]) return null // same station — no conflict
+    const user = users.find(u => u.uid === draftOp)
+    const existingStationId = (user?.workstationIds ?? [])[0]
+    if (!existingStationId) return null
+    const existingStage = STAGES.find(s => s.stationId === existingStationId)
+    return existingStage ? existingStage.name : existingStationId
+  }, [draftOperators, savedOperators, users])
+
   const handleDateRangeChange = useCallback((stationId: string, range: DateRange) => {
     saveDateRange(stationId, range)
     setDateRanges(prev => ({ ...prev, [stationId]: range }))
@@ -1333,6 +1354,7 @@ function WorkstationsPageInner() {
                 savedOperator={savedOperators[stage.stageId] ?? UNASSIGNED_VALUE}
                 draftOperator={draftOperators[stage.stageId]}
                 saveStatus={saveStatuses[stage.stageId] ?? 'idle'}
+                conflictStation={getConflictStation(stage.stageId)}
                 onOperatorDraft={handleOperatorDraft}
                 onSaveOperator={handleSaveOperator}
                 operatorOptions={operatorOptions}
