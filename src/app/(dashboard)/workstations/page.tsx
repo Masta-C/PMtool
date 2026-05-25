@@ -384,10 +384,30 @@ const MACHINE_STATUS_OPTIONS: { value: MachineStatus; label: string; color: stri
 
 function MachineStatusDisplay({
   status,
+  readOnly = false,
 }: {
   stationId: string
   status: MachineStatus | null
+  readOnly?: boolean
 }) {
+  const activeOpt = MACHINE_STATUS_OPTIONS.find(o => o.value === status) ?? null
+
+  if (readOnly) {
+    return (
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">Machine Status</label>
+        <div className="flex items-center gap-1.5">
+          <span
+            className="w-2 h-2 rounded-full shrink-0"
+            style={{ background: activeOpt ? activeOpt.color : '#d1d5db' }}
+          />
+          <span className="text-xs text-gray-500">{activeOpt ? activeOpt.label : 'Unknown'}</span>
+          <span className="text-xs text-gray-300">(set by operator)</span>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div>
       <label className="block text-xs font-medium text-gray-500 mb-1">
@@ -985,6 +1005,7 @@ function StationCard({
   onAddWorkOrders,
   onQueueBadgeClick,
   onReworkBadgeClick,
+  readOnly = false,
 }: {
   stage: (typeof STAGES)[number]
   total: number
@@ -1003,6 +1024,7 @@ function StationCard({
   onAddWorkOrders: () => void
   onQueueBadgeClick: () => void
   onReworkBadgeClick: () => void
+  readOnly?: boolean
 }) {
   const isStation1 = stage.stageId === 'stage_01'
 
@@ -1036,7 +1058,14 @@ function StationCard({
       <div className="p-5 flex flex-col gap-4 flex-1">
         {/* Header row — #38: replace static badge with clickable pills */}
         <div className="flex items-start justify-between gap-2">
-          <h3 className="text-sm font-semibold text-gray-800 leading-snug">{stationLabel(stage.stageId)}</h3>
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-0.5">
+              {stage.stationId.replace('ws_', 'WS').replace('WS0', 'WS')}
+            </p>
+            <h3 className="text-sm font-semibold text-gray-800 leading-snug">
+              {stationLabel(stage.stageId).replace(/^\[WS\d+\]\s*/, '')}
+            </h3>
+          </div>
           <div className="flex items-center gap-1.5 flex-wrap justify-end">
             {total === 0 && reworkCount === 0 ? (
               <span className="text-xs font-medium px-2 py-1 rounded-full whitespace-nowrap bg-gray-100 text-gray-400 cursor-default">
@@ -1044,14 +1073,6 @@ function StationCard({
               </span>
             ) : (
               <>
-                {total > 0 && (
-                  <button
-                    onClick={onQueueBadgeClick}
-                    className="text-xs font-medium px-2 py-1 rounded-full whitespace-nowrap bg-green-100 text-green-700 hover:bg-green-200 transition-colors"
-                  >
-                    {total} queued
-                  </button>
-                )}
                 {reworkCount > 0 && (
                   <button
                     onClick={onReworkBadgeClick}
@@ -1067,7 +1088,9 @@ function StationCard({
 
         {/* Queue count */}
         <div className="flex items-baseline gap-2 flex-wrap">
-          <span className="text-3xl font-bold text-gray-900">{total}</span>
+          <button onClick={onQueueBadgeClick} className="text-3xl font-bold text-gray-900 hover:text-blue-600 transition-colors">
+            {total}
+          </button>
           <span className="text-sm text-gray-500">meter{total !== 1 ? 's' : ''} queued</span>
         </div>
 
@@ -1126,6 +1149,7 @@ function StationCard({
         <MachineStatusDisplay
           stationId={stage.stationId}
           status={machineStatus}
+          readOnly={readOnly}
         />
 
         {/* Station 1 extra actions — #36: single Add Work Orders button */}
@@ -1186,6 +1210,7 @@ export default function WorkstationsPage() {
 }
 
 function WorkstationsPageInner() {
+  const { role } = useAuth()
   const { counts } = useStationCounts()
   const { operatorOptions } = useOperatorOptions()
   const { users } = useUsers()
@@ -1365,6 +1390,7 @@ function WorkstationsPageInner() {
                 onAddWorkOrders={() => setAddWorkOrdersOpen(true)}
                 onQueueBadgeClick={() => openQueueModal(stage.stageId, count.total)}
                 onReworkBadgeClick={() => openReworkModal(stage.stageId, count.reworkCount)}
+                readOnly={role === 'admin' || role === 'supervisor'}
               />
             )
           })}

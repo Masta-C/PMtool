@@ -433,10 +433,12 @@ export default function OperatorPage() {
 
             {/* Queue list */}
             {meters.length === 0 ? (
-              <div className="flex flex-col items-center py-12 text-center">
-                <span className="text-4xl mb-3">✅</span>
-                <p className="text-base font-semibold text-gray-700">All clear — no meters in queue</p>
-                <p className="text-sm text-gray-400 mt-1">New meters appear automatically.</p>
+              <div className="flex flex-col items-center justify-center py-16 text-center">
+                <svg className="w-12 h-12 text-gray-200 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <p className="text-sm font-medium text-gray-400">Queue is clear</p>
+                <p className="text-xs text-gray-300 mt-1">No meters waiting at this station</p>
               </div>
             ) : (
               <div className="flex flex-col gap-3">

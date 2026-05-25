@@ -1,5 +1,7 @@
 'use client'
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
+import { collection, query, orderBy, onSnapshot, limit, Timestamp } from 'firebase/firestore'
+import { db } from '@/lib/firebase/client'
 import { useAuth } from '@/hooks/useAuth'
 import type { Role } from '@/types/user'
 
@@ -31,77 +33,15 @@ interface AuditEntry {
 }
 
 // ---------------------------------------------------------------------------
-// Mock data
+// Helpers (Firestore Timestamp → ISO string)
 // ---------------------------------------------------------------------------
 
-const MOCK_AUDIT_LOG: AuditEntry[] = [
-  {
-    id: 'log_001',
-    action: 'STAGE_SUBMITTED',
-    actorUid: 'test-operator',
-    actorRole: 'operator',
-    targetMeterId: 'WO-2026-00001',
-    stageId: 'stage_01',
-    before: { status: 'in_progress', currentStageId: 'stage_01' },
-    after: { status: 'queued', currentStageId: 'stage_02', result: 'PASSED' },
-    timestamp: new Date(Date.now() - 300000).toISOString(),
-  },
-  {
-    id: 'log_002',
-    action: 'REWORK_TAGGED',
-    actorUid: 'test-operator',
-    actorRole: 'operator',
-    targetMeterId: 'WO-2026-00002',
-    stageId: 'stage_05',
-    before: { status: 'in_progress', currentStageId: 'stage_05' },
-    after: { status: 'rework', currentStageId: 'stage_03', comment: 'Power supply irregular' },
-    timestamp: new Date(Date.now() - 900000).toISOString(),
-  },
-  {
-    id: 'log_003',
-    action: 'SUPERVISOR_OVERRIDE',
-    actorUid: 'test-supervisor',
-    actorRole: 'supervisor',
-    targetMeterId: 'WO-2026-00003',
-    stageId: 'stage_09',
-    before: { status: 'failed', result: 'FAILED' },
-    after: { status: 'queued', currentStageId: 'stage_10', result: 'OVERRIDDEN', comment: 'Borderline reading, QE approved' },
-    timestamp: new Date(Date.now() - 1800000).toISOString(),
-  },
-  {
-    id: 'log_004',
-    action: 'DRAFT_SAVED',
-    actorUid: 'test-operator',
-    actorRole: 'operator',
-    targetMeterId: 'WO-2026-00004',
-    stageId: 'stage_02',
-    before: null,
-    after: { draftSavedAt: new Date(Date.now() - 3600000).toISOString(), parametersFilled: 3 },
-    timestamp: new Date(Date.now() - 3600000).toISOString(),
-  },
-  {
-    id: 'log_005',
-    action: 'USER_CREATED',
-    actorUid: 'test-admin',
-    actorRole: 'admin',
-    targetMeterId: null,
-    stageId: null,
-    before: null,
-    after: { displayName: 'OP-005', role: 'operator', email: 'op005@pmtool.dev' },
-    timestamp: new Date(Date.now() - 7200000).toISOString(),
-  },
-  {
-    id: 'log_006',
-    action: 'REWORK_ACCEPTED',
-    actorUid: 'test-operator',
-    actorRole: 'operator',
-    targetMeterId: 'WO-2026-00002',
-    stageId: 'stage_03',
-    before: { status: 'rework' },
-    after: { status: 'in_progress' },
-    timestamp: new Date(Date.now() - 1200000).toISOString(),
-  },
-]
+function toIsoSafe(ts: unknown): string {
+  if (!ts) return new Date().toISOString()
+  if (ts instanceof Timestamp) return ts.toDate().toISOString()
+  if (typeof ts === 'string') return ts
+  return new Date().toISOString()
+}
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -263,9 +203,40 @@ function AuditLogContent({ canExport }: { canExport: boolean }) {
   const [dateFilter, setDateFilter] = useState<DateFilter>('30d')
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('all')
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+  const [entries, setEntries] = useState<AuditEntry[]>([])
+  const [loadingEntries, setLoadingEntries] = useState(true)
+
+  useEffect(() => {
+    const q = query(
+      collection(db, 'auditLog'),
+      orderBy('timestamp', 'desc'),
+      limit(200)
+    )
+    const unsub = onSnapshot(q, snap => {
+      const mapped: AuditEntry[] = snap.docs.map(d => {
+        const data = d.data()
+        return {
+          id: d.id,
+          action: data.action as ActionType,
+          actorUid: data.actorUid ?? '',
+          actorRole: data.actorRole as Role,
+          targetMeterId: data.targetMeterId ?? null,
+          stageId: data.stageId ?? null,
+          before: data.before ?? null,
+          after: data.after ?? null,
+          timestamp: toIsoSafe(data.timestamp),
+        }
+      })
+      setEntries(mapped)
+      setLoadingEntries(false)
+    }, () => setLoadingEntries(false))
+    return unsub
+  }, [])
 
   const filtered = useMemo(() => {
-    return MOCK_AUDIT_LOG
+    return entries
       .filter(e => {
         if (search.trim()) {
           const q = search.trim().toLowerCase()
@@ -274,10 +245,12 @@ function AuditLogContent({ canExport }: { canExport: boolean }) {
         if (actionFilter !== 'all' && e.action !== actionFilter) return false
         if (!matchesDateFilter(e.timestamp, dateFilter)) return false
         if (roleFilter !== 'all' && e.actorRole !== roleFilter) return false
+        if (dateFrom && new Date(e.timestamp) < new Date(dateFrom + 'T00:00:00')) return false
+        if (dateTo && new Date(e.timestamp) > new Date(dateTo + 'T23:59:59')) return false
         return true
       })
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-  }, [search, actionFilter, dateFilter, roleFilter])
+  }, [search, actionFilter, dateFilter, roleFilter, entries, dateFrom, dateTo])
 
   function handleExport() {
     const csv = toCsv(filtered)
@@ -373,74 +346,100 @@ function AuditLogContent({ canExport }: { canExport: boolean }) {
             <option value="qa">qa</option>
           </select>
         </div>
+
+        {/* Date from */}
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">From</label>
+          <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+            className="border border-gray-300 rounded-lg px-2.5 py-1.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-200 bg-white" />
+        </div>
+
+        {/* Date to */}
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">To</label>
+          <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+            className="border border-gray-300 rounded-lg px-2.5 py-1.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-200 bg-white" />
+        </div>
+
+        {/* Clear filters */}
+        <button
+          onClick={() => { setActionFilter('all'); setSearch(''); setDateFrom(''); setDateTo('') }}
+          className="self-end px-3 py-1.5 text-sm border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 transition-colors"
+        >
+          Clear
+        </button>
       </div>
 
       {/* Log table */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        {filtered.length === 0 ? (
-          <div className="p-10 text-center text-gray-400 text-sm">No audit entries match the current filters.</div>
-        ) : (
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>
-                {['Timestamp', 'Action', 'Meter', 'Stage', 'Actor', 'Details'].map(h => (
-                  <th key={h} className="text-left px-4 py-3 font-medium text-gray-600 whitespace-nowrap">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {filtered.map(entry => (
-                <>
-                  <tr
-                    key={entry.id}
-                    onClick={() => toggleRow(entry.id)}
-                    className="hover:bg-gray-50 cursor-pointer select-none"
-                  >
-                    {/* Timestamp */}
-                    <td className="px-4 py-3 text-gray-600 whitespace-nowrap font-mono text-xs">
-                      {formatTimestamp(entry.timestamp)}
-                    </td>
-                    {/* Action */}
-                    <td className="px-4 py-3">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${ACTION_BADGE[entry.action]}`}>
-                        {ACTION_LABELS[entry.action]}
-                      </span>
-                    </td>
-                    {/* Meter */}
-                    <td className="px-4 py-3 font-medium text-gray-900 whitespace-nowrap">
-                      {entry.targetMeterId ?? '—'}
-                    </td>
-                    {/* Stage */}
-                    <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
-                      {entry.stageId ?? '—'}
-                    </td>
-                    {/* Actor */}
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <span className="text-gray-900 font-medium mr-1.5">{entry.actorUid}</span>
-                      <span className={`px-1.5 py-0.5 rounded-full text-xs font-medium ${ROLE_BADGE[entry.actorRole]}`}>
-                        {entry.actorRole}
-                      </span>
-                    </td>
-                    {/* Details */}
-                    <td className="px-4 py-3 text-gray-600 max-w-[240px] truncate">
-                      {getOneLinerDetails(entry.after)}
-                    </td>
-                  </tr>
-                  {expandedId === entry.id && (
-                    <tr key={`${entry.id}-expand`} className="bg-gray-50">
-                      <td colSpan={6} className="px-6 py-4">
-                        <div className="grid grid-cols-2 gap-8">
-                          <KvTable data={entry.before} label="Before" />
-                          <KvTable data={entry.after} label="After" />
-                        </div>
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 border-b border-gray-200">
+            <tr>
+              {['Timestamp', 'Action', 'Meter', 'Stage', 'Actor', 'Details'].map(h => (
+                <th key={h} className="text-left px-4 py-3 font-medium text-gray-600 whitespace-nowrap">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {loadingEntries ? (
+              <tr><td colSpan={6} className="text-center py-10 text-gray-400 text-sm">Loading audit log…</td></tr>
+            ) : filtered.length === 0 ? (
+              <tr><td colSpan={6} className="text-center py-10 text-gray-400 text-sm">No entries match.</td></tr>
+            ) : (
+              <>
+                {filtered.map(entry => (
+                  <>
+                    <tr
+                      key={entry.id}
+                      onClick={() => toggleRow(entry.id)}
+                      className="hover:bg-gray-50 cursor-pointer select-none"
+                    >
+                      {/* Timestamp */}
+                      <td className="px-4 py-3 text-gray-600 whitespace-nowrap font-mono text-xs">
+                        {formatTimestamp(entry.timestamp)}
+                      </td>
+                      {/* Action */}
+                      <td className="px-4 py-3">
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${ACTION_BADGE[entry.action]}`}>
+                          {ACTION_LABELS[entry.action]}
+                        </span>
+                      </td>
+                      {/* Meter */}
+                      <td className="px-4 py-3 font-medium text-gray-900 whitespace-nowrap">
+                        {entry.targetMeterId ?? '—'}
+                      </td>
+                      {/* Stage */}
+                      <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
+                        {entry.stageId ?? '—'}
+                      </td>
+                      {/* Actor */}
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <span className="text-gray-900 font-medium mr-1.5">{entry.actorUid}</span>
+                        <span className={`px-1.5 py-0.5 rounded-full text-xs font-medium ${ROLE_BADGE[entry.actorRole]}`}>
+                          {entry.actorRole}
+                        </span>
+                      </td>
+                      {/* Details */}
+                      <td className="px-4 py-3 text-gray-600 max-w-[240px] truncate">
+                        {getOneLinerDetails(entry.after)}
                       </td>
                     </tr>
-                  )}
-                </>
-              ))}
-            </tbody>
-          </table>
-        )}
+                    {expandedId === entry.id && (
+                      <tr key={`${entry.id}-expand`} className="bg-gray-50">
+                        <td colSpan={6} className="px-6 py-4">
+                          <div className="grid grid-cols-2 gap-8">
+                            <KvTable data={entry.before} label="Before" />
+                            <KvTable data={entry.after} label="After" />
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </>
+                ))}
+              </>
+            )}
+          </tbody>
+        </table>
       </div>
     </div>
   )

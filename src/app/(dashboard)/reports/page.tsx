@@ -187,9 +187,53 @@ function meterIdFromPath(path: string): string {
   return parts[1] ?? ''
 }
 
+function getDatePreset(preset: 'today' | '7d' | '30d' | 'month'): { from: string; to: string } {
+  const now = new Date()
+  const to = now.toISOString().slice(0, 10)
+  if (preset === 'today') {
+    return { from: to, to }
+  }
+  if (preset === '7d') {
+    const from = new Date(now)
+    from.setDate(from.getDate() - 7)
+    return { from: from.toISOString().slice(0, 10), to }
+  }
+  if (preset === '30d') {
+    const from = new Date(now)
+    from.setDate(from.getDate() - 30)
+    return { from: from.toISOString().slice(0, 10), to }
+  }
+  // month
+  const from = new Date(now.getFullYear(), now.getMonth(), 1)
+  return { from: from.toISOString().slice(0, 10), to }
+}
+
 // ---------------------------------------------------------------------------
 // Shared UI components
 // ---------------------------------------------------------------------------
+
+function DatePresets({ onSelect }: { onSelect: (from: string, to: string) => void }) {
+  const presets = [
+    { label: 'Today', key: 'today' as const },
+    { label: '7 days', key: '7d' as const },
+    { label: '30 days', key: '30d' as const },
+    { label: 'This month', key: 'month' as const },
+  ]
+  return (
+    <div className="flex gap-1.5 flex-wrap">
+      {presets.map(p => (
+        <button
+          key={p.key}
+          type="button"
+          onClick={() => { const d = getDatePreset(p.key); onSelect(d.from, d.to) }}
+          className="px-2.5 py-1 text-xs font-medium rounded-full border border-gray-200 text-gray-600 hover:border-blue-300 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+        >
+          {p.label}
+        </button>
+      ))}
+    </div>
+  )
+}
 
 function ResultBadge({ result }: { result: string }) {
   const styles: Record<string, string> = {
@@ -382,6 +426,10 @@ function ProductionTab() {
               <option key={s.stageId} value={s.stageId}>{stationLabel(s.stageId)}</option>
             ))}
           </select>
+        </FilterField>
+
+        <FilterField label="Quick select">
+          <DatePresets onSelect={(from, to) => setFilters(prev => ({ ...prev, dateFrom: from, dateTo: to }))} />
         </FilterField>
 
         <FilterField label="From">
@@ -763,6 +811,9 @@ function FailureHistoryTab() {
         className="rounded-xl p-4 flex flex-wrap gap-3 items-end"
         style={{ background: 'var(--color-card-bg)', border: '1px solid var(--color-card-border)' }}
       >
+        <FilterField label="Quick select">
+          <DatePresets onSelect={(from, to) => setFilters(prev => ({ ...prev, dateFrom: from, dateTo: to }))} />
+        </FilterField>
         <FilterField label="From">
           <input type="date" value={filters.dateFrom} onChange={e => updateFilter('dateFrom', e.target.value)} className={INPUT_CLS} />
         </FilterField>
@@ -988,6 +1039,9 @@ function TamperTestTab() {
         className="rounded-xl p-4 flex flex-wrap gap-3 items-end"
         style={{ background: 'var(--color-card-bg)', border: '1px solid var(--color-card-border)' }}
       >
+        <FilterField label="Quick select">
+          <DatePresets onSelect={(from, to) => setFilters(prev => ({ ...prev, dateFrom: from, dateTo: to }))} />
+        </FilterField>
         <FilterField label="From">
           <input type="date" value={filters.dateFrom} onChange={e => updateFilter('dateFrom', e.target.value)} className={INPUT_CLS} />
         </FilterField>

@@ -101,6 +101,9 @@ export default function TeamPage() {
   const [editSubmitting, setEditSubmitting] = useState(false)
   const [editError, setEditError] = useState<string | null>(null)
 
+  // Search state
+  const [search, setSearch] = useState('')
+
   // Delete state
   const [deleteTarget, setDeleteTarget] = useState<AppUser | null>(null)
   const [deleting, setDeleting] = useState(false)
@@ -265,6 +268,15 @@ export default function TeamPage() {
   }
 
   // ---------------------------------------------------------------------------
+  // Derived data
+  // ---------------------------------------------------------------------------
+
+  const filteredUsers = users.filter(u =>
+    u.displayName?.toLowerCase().includes(search.toLowerCase()) ||
+    u.email?.toLowerCase().includes(search.toLowerCase())
+  )
+
+  // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
 
@@ -276,7 +288,9 @@ export default function TeamPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Team</h1>
           <p className="text-sm mt-1 text-gray-500">
-            {loading ? 'Loading...' : `${users.length} account${users.length !== 1 ? 's' : ''}`}
+            {loading ? 'Loading...' : search
+              ? `${filteredUsers.length} of ${users.length} account${users.length !== 1 ? 's' : ''}`
+              : `${users.length} account${users.length !== 1 ? 's' : ''}`}
           </p>
         </div>
         {currentRole === 'admin' && (
@@ -345,6 +359,18 @@ export default function TeamPage() {
         </div>
       )}
 
+      {/* Search box */}
+      {!loading && (
+        <input
+          type="text"
+          placeholder="Search by name or email…"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="w-full max-w-sm border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 mb-4"
+          style={{ '--tw-ring-color': 'var(--color-primary)' } as React.CSSProperties}
+        />
+      )}
+
       {/* Team table */}
       {loading ? (
         <p className="text-sm text-gray-400">Loading users…</p>
@@ -368,7 +394,7 @@ export default function TeamPage() {
               </tr>
             </thead>
             <tbody>
-              {users.map((u, i) => (
+              {filteredUsers.map((u, i) => (
                 <tr
                   key={u.uid}
                   style={{
@@ -397,12 +423,11 @@ export default function TeamPage() {
                     {getWorkstationLabel(u)}
                   </td>
                   <td className="px-4 py-3">
-                    <div className="flex gap-3">
+                    <div className="flex gap-2 flex-wrap">
                       {(currentRole === 'admin' || currentRole === 'supervisor') && (
                         <button
                           onClick={() => openEdit(u)}
-                          className="text-xs font-medium transition-opacity hover:opacity-70"
-                          style={{ color: 'var(--color-primary)' }}
+                          className="border border-blue-300 text-blue-600 bg-white hover:bg-blue-50 rounded-full px-3 py-1 text-xs font-medium transition-colors"
                         >
                           Edit
                         </button>
@@ -410,7 +435,7 @@ export default function TeamPage() {
                       {(currentRole === 'admin' || currentRole === 'supervisor') && (
                         <button
                           onClick={() => { setResetTarget(u); setResetError(null) }}
-                          className="text-xs font-medium text-amber-500 hover:text-amber-400 transition-colors"
+                          className="border border-amber-300 text-amber-600 bg-amber-50 hover:bg-amber-100 rounded-full px-3 py-1 text-xs font-medium transition-colors"
                         >
                           Reset Password
                         </button>
@@ -418,7 +443,7 @@ export default function TeamPage() {
                       {(currentRole === 'admin' || currentRole === 'supervisor') && u.uid !== currentUser?.uid && (
                         <button
                           onClick={() => setDeleteTarget(u)}
-                          className="text-xs font-medium text-red-400 hover:text-red-300 transition-colors"
+                          className="border border-red-200 text-red-600 bg-red-50 hover:bg-red-100 rounded-full px-3 py-1 text-xs font-medium transition-colors"
                         >
                           Delete
                         </button>
@@ -427,14 +452,14 @@ export default function TeamPage() {
                   </td>
                 </tr>
               ))}
-              {users.length === 0 && (
+              {filteredUsers.length === 0 && (
                 <tr>
                   <td
                     colSpan={5}
                     className="px-4 py-8 text-center text-sm"
                     style={{ color: '#9ca3af' }}
                   >
-                    No users found.
+                    {search ? 'No users match your search.' : 'No users found.'}
                   </td>
                 </tr>
               )}

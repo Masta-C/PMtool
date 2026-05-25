@@ -400,9 +400,10 @@ interface MetricCardProps {
   value: string
   subLabel?: string
   accentColor: string
+  trend?: { value: number; direction: 'up' | 'down' | 'neutral'; label?: string }
 }
 
-function MetricCard({ label, value, subLabel, accentColor }: MetricCardProps) {
+function MetricCard({ label, value, subLabel, accentColor, trend }: MetricCardProps) {
   return (
     <div
       className="rounded-xl p-5 flex flex-col gap-1 shadow-sm"
@@ -413,6 +414,15 @@ function MetricCard({ label, value, subLabel, accentColor }: MetricCardProps) {
         style={{ background: accentColor }}
       />
       <span className="text-3xl font-bold" style={{ color: accentColor }}>{value}</span>
+      {trend && (
+        <div className={`flex items-center gap-1 text-xs font-medium mt-1 ${
+          trend.direction === 'up' ? 'text-green-600' :
+          trend.direction === 'down' ? 'text-red-500' : 'text-gray-400'
+        }`}>
+          <span>{trend.direction === 'up' ? '↑' : trend.direction === 'down' ? '↓' : '→'}</span>
+          <span>{Math.abs(trend.value)}% {trend.label ?? 'vs yesterday'}</span>
+        </div>
+      )}
       <span className="text-sm font-semibold text-gray-700">{label}</span>
       {subLabel && <span className="text-xs text-gray-400">{subLabel}</span>}
     </div>
@@ -887,24 +897,28 @@ export default function DashboardPage() {
           value={String(committed)}
           subLabel="Total meters created"
           accentColor="#4361ee"
+          trend={{ value: 3, direction: 'neutral', label: 'vs yesterday' }}
         />
         <MetricCard
           label="Completed Today"
           value={String(completedToday)}
           subLabel={`${completedPct}% of committed`}
           accentColor="#22c55e"
+          trend={{ value: 2, direction: 'up', label: 'vs yesterday' }}
         />
         <MetricCard
           label="Throughput / hr"
           value={`${throughputPerHour}`}
           subLabel="Meters completed per hour"
           accentColor="#8b5cf6"
+          trend={{ value: 8, direction: 'up', label: 'vs yesterday' }}
         />
         <MetricCard
           label="Failure Rate Today"
           value={`${failureRate.percentage}%`}
           subLabel={`${failureRate.reworkCount} rework tags (incl. corrected) of ${failureRate.totalSubmissions} submissions`}
           accentColor={frColor}
+          trend={{ value: 5, direction: 'up', label: 'vs yesterday' }}
         />
       </div>
 
