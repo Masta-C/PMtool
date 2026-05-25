@@ -77,7 +77,7 @@ export function Sidebar() {
       {/* Sign out */}
       <div className="px-3 py-4 border-t" style={{ borderColor: 'var(--color-sidebar-border)' }}>
         <button
-          onClick={() => signOut()}
+          onClick={() => signOut(role)}
           className="w-full text-left px-3 py-2 text-sm rounded-lg transition-all duration-150"
           style={{ color: 'var(--color-sidebar-text)' }}
           onMouseEnter={e => {
