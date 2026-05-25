@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from 'react'
 import { useAuth } from '@/hooks/useAuth'
+import { useUsers } from '@/hooks/useUsers'
 import type { Role } from '@/types/user'
 import { STAGES, stationLabel } from '@/lib/stages'
 
@@ -16,13 +17,6 @@ const ALLOWED_ROLES: Role[] = ['qa', 'admin', 'supervisor']
 // TODO: Replace with Firestore query: collection('productionRuns') filtered by
 //       workOrderId, stageId, operatorId, date range, result, reworkStatus
 // ---------------------------------------------------------------------------
-
-const MOCK_OPERATORS = [
-  { id: 'OP-001', name: 'Anita Sharma' },
-  { id: 'OP-002', name: 'Ravi Kumar' },
-  { id: 'OP-003', name: 'Priya Nair' },
-  { id: 'OP-004', name: 'Suresh Mehta' },
-]
 
 const MOCK_PRODUCTION_RUNS = [
   { id: 'pr1',  orderNum: 'WO-2026-00001', stageId: 'stage_01', operatorId: 'OP-001', date: new Date(Date.now() - 1800000).toISOString(),   result: 'Pass' as const, reworkStatus: null },
@@ -139,8 +133,8 @@ function downloadCsv(filename: string, headers: string[], rows: string[][]) {
   URL.revokeObjectURL(url)
 }
 
-function operatorName(id: string): string {
-  return MOCK_OPERATORS.find(o => o.id === id)?.name ?? id
+function operatorName(id: string, lookup?: Record<string, string>): string {
+  return lookup?.[id] ?? id
 }
 
 // ---------------------------------------------------------------------------
@@ -203,6 +197,18 @@ function TableFooter({ count, noun }: { count: number; noun: string }) {
 // ---------------------------------------------------------------------------
 
 function ProductionTab() {
+  const { users } = useUsers()
+
+  // Build a uid → display name lookup for all operators (active and inactive)
+  const operatorUsers = useMemo(
+    () => users.filter(u => u.role === 'operator'),
+    [users]
+  )
+  const operatorLookup = useMemo(
+    () => Object.fromEntries(operatorUsers.map(u => [u.uid, u.displayName?.trim() || u.email])),
+    [operatorUsers]
+  )
+
   const [filters, setFilters] = useState<ProductionFilters>({
     station: 'all',
     dateFrom: '',
@@ -241,7 +247,7 @@ function ProductionTab() {
     const rows = filtered.map(r => [
       r.orderNum,
       stationLabel(r.stageId),
-      operatorName(r.operatorId),
+      operatorName(r.operatorId, operatorLookup),
       formatDateTime(r.date),
       r.result,
       r.reworkStatus ?? '—',
@@ -275,9 +281,9 @@ function ProductionTab() {
 
         <FilterField label="Operator">
           <select value={filters.operator} onChange={e => updateFilter('operator', e.target.value)} className={INPUT_CLS}>
-            <option value="all">All operators</option>
-            {MOCK_OPERATORS.map(o => (
-              <option key={o.id} value={o.id}>{o.name}</option>
+            <option value="all">All Operators</option>
+            {operatorUsers.map(u => (
+              <option key={u.uid} value={u.uid}>{u.displayName?.trim() || u.email}</option>
             ))}
           </select>
         </FilterField>
@@ -349,7 +355,7 @@ function ProductionTab() {
                   >
                     <td className="px-4 py-3 font-mono text-gray-800 whitespace-nowrap">{r.orderNum}</td>
                     <td className="px-4 py-3 text-gray-700 whitespace-nowrap">{stationLabel(r.stageId)}</td>
-                    <td className="px-4 py-3 text-gray-700 whitespace-nowrap">{operatorName(r.operatorId)}</td>
+                    <td className="px-4 py-3 text-gray-700 whitespace-nowrap">{operatorName(r.operatorId, operatorLookup)}</td>
                     <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{formatDateTime(r.date)}</td>
                     <td className="px-4 py-3 whitespace-nowrap"><ResultBadge result={r.result} /></td>
                     <td className="px-4 py-3 whitespace-nowrap">

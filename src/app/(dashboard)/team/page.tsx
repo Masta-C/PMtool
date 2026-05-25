@@ -3,7 +3,7 @@ import { useState, useCallback } from 'react'
 import { useAuth } from '@/hooks/useAuth'
 import { useUsers } from '@/hooks/useUsers'
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog'
-import { createUserFn, setUserRoleFn, deleteUserFn } from '@/lib/firebase/functions'
+import { createUserFn, setUserRoleFn, deleteUserFn, resetUserPasswordFn } from '@/lib/firebase/functions'
 import { stationLabel } from '@/lib/stages'
 import type { Role, AppUser } from '@/types/user'
 
@@ -103,6 +103,11 @@ export default function TeamPage() {
   const [deleteTarget, setDeleteTarget] = useState<AppUser | null>(null)
   const [deleting, setDeleting] = useState(false)
 
+  // Reset password state
+  const [resetTarget, setResetTarget] = useState<AppUser | null>(null)
+  const [resetting, setResetting] = useState(false)
+  const [resetError, setResetError] = useState<string | null>(null)
+
   // ---------------------------------------------------------------------------
   // Handlers — create
   // ---------------------------------------------------------------------------
@@ -195,19 +200,35 @@ export default function TeamPage() {
   }
 
   // ---------------------------------------------------------------------------
-  // Workstation column helper
-  //
-  // TODO: Replace stub with real-time Firestore query.
-  // Collection: `workstationAssignments` (or equivalent assignment collection)
-  // Query: where('operatorUid', '==', uid) to find which stageId the operator
-  // is currently assigned to, then call stationLabel(stageId) for display.
-  // For now all operators show '—' (unassigned).
+  // Handlers — reset password
   // ---------------------------------------------------------------------------
 
-  function getWorkstationLabel(_uid: string): string {
-    // Stub — see TODO above
-    void stationLabel // stationLabel imported for future use
-    return '—'
+  async function handleResetPassword() {
+    if (!resetTarget) return
+    setResetting(true)
+    setResetError(null)
+    const newPassword = generatePassword()
+    try {
+      await resetUserPasswordFn({ targetUid: resetTarget.uid, newPassword })
+      const displayName = resetTarget.displayName
+      setResetTarget(null)
+      // Reuse the postSave banner to reveal the new password
+      setPostSave({ opId: '', password: newPassword, displayName })
+    } catch (err: unknown) {
+      setResetError((err as { message?: string }).message ?? 'Failed to reset password. Please try again.')
+    } finally {
+      setResetting(false)
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Workstation column helper
+  // ---------------------------------------------------------------------------
+
+  function getWorkstationLabel(user: AppUser): string {
+    const ids = user.workstationIds
+    if (!ids || ids.length === 0) return '—'
+    return ids.map(id => stationLabel(id)).join(', ')
   }
 
   // ---------------------------------------------------------------------------
@@ -244,7 +265,9 @@ export default function TeamPage() {
         >
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="text-sm font-semibold text-green-400 mb-1">User created successfully</p>
+              <p className="text-sm font-semibold text-green-400 mb-1">
+                {postSave.opId ? 'User created successfully' : 'Password reset successfully'}
+              </p>
               <p className="text-xs mb-3" style={{ color: 'rgba(255,255,255,0.55)' }}>
                 Save the password now — it will not be shown again.
               </p>
@@ -253,10 +276,12 @@ export default function TeamPage() {
                   <span className="block text-xs font-medium text-green-500 mb-0.5">Operator Name</span>
                   <span className="text-sm font-mono text-white">{postSave.displayName}</span>
                 </div>
-                <div>
-                  <span className="block text-xs font-medium text-green-500 mb-0.5">Op ID (auto-generated)</span>
-                  <span className="text-sm font-mono text-white">{postSave.opId}</span>
-                </div>
+                {postSave.opId && (
+                  <div>
+                    <span className="block text-xs font-medium text-green-500 mb-0.5">Op ID (auto-generated)</span>
+                    <span className="text-sm font-mono text-white">{postSave.opId}</span>
+                  </div>
+                )}
                 <div>
                   <span className="block text-xs font-medium text-green-500 mb-0.5">Temporary Password</span>
                   <div className="flex items-center gap-2">
@@ -335,8 +360,8 @@ export default function TeamPage() {
                       {ROLE_LABEL[u.role] ?? u.role}
                     </span>
                   </td>
-                  <td className="px-4 py-3 font-mono text-sm text-gray-400">
-                    {getWorkstationLabel(u.uid)}
+                  <td className="px-4 py-3 text-sm text-gray-400">
+                    {getWorkstationLabel(u)}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex gap-3">
@@ -347,6 +372,14 @@ export default function TeamPage() {
                           style={{ color: 'var(--color-primary)' }}
                         >
                           Edit
+                        </button>
+                      )}
+                      {currentRole === 'admin' && (
+                        <button
+                          onClick={() => { setResetTarget(u); setResetError(null) }}
+                          className="text-xs font-medium text-amber-500 hover:text-amber-400 transition-colors"
+                        >
+                          Reset Password
                         </button>
                       )}
                       {currentRole === 'admin' && u.uid !== currentUser?.uid && (
@@ -545,6 +578,41 @@ export default function TeamPage() {
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}
       />
+
+      {/* Reset password confirm modal */}
+      {resetTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div
+            className="rounded-xl shadow-2xl p-6 w-full max-w-sm mx-4 border"
+            style={{ background: 'var(--color-card-bg)', borderColor: 'var(--color-card-border)' }}
+          >
+            <h2 className="text-lg font-semibold text-gray-900 mb-1">Reset Password</h2>
+            <p className="text-sm text-gray-500 mb-4">
+              Reset password for <span className="font-semibold text-gray-700">{resetTarget.displayName}</span>? A new temporary password will be generated — they will need to use it immediately.
+            </p>
+            {resetError && <p className="text-sm text-red-500 mb-3">{resetError}</p>}
+            <div className="flex gap-3 justify-end">
+              <button
+                type="button"
+                onClick={() => { setResetTarget(null); setResetError(null) }}
+                disabled={resetting}
+                className="px-4 py-2 text-sm text-gray-600 rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleResetPassword}
+                disabled={resetting}
+                className="px-4 py-2 text-sm font-semibold text-white rounded-lg disabled:opacity-50 transition-opacity hover:opacity-80"
+                style={{ background: '#d97706' }}
+              >
+                {resetting ? 'Resetting…' : 'Reset'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

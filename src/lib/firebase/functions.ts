@@ -14,3 +14,6 @@ export const createUserFn = httpsCallable<
 export const setUserRoleFn = httpsCallable<{ targetUid: string; role: string }, { success: boolean }>(functionsInstance, 'setUserRole')
 export const deleteUserFn = httpsCallable<{ targetUid: string }, { success: boolean }>(functionsInstance, 'deleteUser')
 export const deleteWorkstationFn = httpsCallable<{ wsId: string }, { success: boolean }>(functionsInstance, 'deleteWorkstation')
+// TODO: Cloud Function `resetUserPassword` needs to be implemented in functions/src/index.ts
+// It should accept { targetUid, newPassword } and call admin.auth().updateUser(targetUid, { password: newPassword })
+export const resetUserPasswordFn = httpsCallable<{ targetUid: string; newPassword: string }, { success: boolean }>(functionsInstance, 'resetUserPassword')

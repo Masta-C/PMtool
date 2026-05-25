@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useMemo } from 'react'
 import { doc, getDoc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore'
 import { db } from '@/lib/firebase/client'
 import { useAuth } from '@/hooks/useAuth'
@@ -56,7 +56,6 @@ function loadDateRange(stationId: string): DateRange | null {
     const raw = localStorage.getItem(localStorageKey(stationId))
     if (!raw) return null
     const stored: StoredDateRange = JSON.parse(raw)
-    // If the stored date doesn't match today, treat as unset
     if (stored.date !== getTodayString()) return null
     return stored.range
   } catch {
@@ -304,18 +303,14 @@ function OrderListModal({
 // Helpers
 // ---------------------------------------------------------------------------
 
-function getCardAccent(total: number, reworkCount: number): {
-  borderClass: string
-  badgeClass: string
-  statusLabel: string
-} {
+function getCardAccent(total: number, reworkCount: number): { borderClass: string } {
   if (total === 0) {
-    return { borderClass: 'border-l-4 border-red-500', badgeClass: 'bg-red-100 text-red-700', statusLabel: 'No queue' }
+    return { borderClass: 'border-l-4 border-red-500' }
   }
   if (reworkCount > 0) {
-    return { borderClass: 'border-l-4 border-yellow-400', badgeClass: 'bg-yellow-100 text-yellow-700', statusLabel: 'Has rework' }
+    return { borderClass: 'border-l-4 border-yellow-400' }
   }
-  return { borderClass: 'border-l-4 border-green-500', badgeClass: 'bg-green-100 text-green-700', statusLabel: 'Queued' }
+  return { borderClass: 'border-l-4 border-green-500' }
 }
 
 function formatDate(date: Date): string {
@@ -535,169 +530,6 @@ function ExcelModal({
 }
 
 // ---------------------------------------------------------------------------
-// Station Card
-// ---------------------------------------------------------------------------
-
-function StationCard({
-  stage,
-  total,
-  reworkCount,
-  operator,
-  onOperatorChange,
-  operatorOptions,
-  dateRange,
-  onDateRangeChange,
-  machineStatus,
-  pendingMeters,
-  onExcelUpload,
-  onManualAdd,
-  onQueueBadgeClick,
-  onReworkBadgeClick,
-}: {
-  stage: (typeof STAGES)[number]
-  total: number
-  reworkCount: number
-  operator: string
-  onOperatorChange: (stageId: string, op: string) => void | Promise<void>
-  operatorOptions: OperatorOption[]
-  dateRange: DateRange | null
-  onDateRangeChange: (stationId: string, range: DateRange) => void
-  machineStatus: MachineStatus | null
-  pendingMeters: ParsedMeter[]
-  onExcelUpload: () => void
-  onManualAdd: () => void
-  onQueueBadgeClick: () => void
-  onReworkBadgeClick: () => void
-}) {
-  const { badgeClass, statusLabel } = getCardAccent(total, reworkCount)
-  const isStation1 = stage.stageId === 'stage_01'
-
-  const accentColor =
-    machineStatus === 'green'  ? '#22c55e' :
-    machineStatus === 'yellow' ? '#eab308' :
-    machineStatus === 'red'    ? '#ef4444' :
-    'var(--color-card-border)'
-
-  return (
-    <div
-      className="bg-white rounded-xl shadow-sm overflow-hidden flex flex-col"
-      style={{ borderLeft: `4px solid ${accentColor}` }}
-    >
-      <div className="p-5 flex flex-col gap-4 flex-1">
-        {/* Header row */}
-        <div className="flex items-start justify-between gap-2">
-          <div>
-            <h3 className="text-sm font-semibold text-gray-800 leading-snug">{stationLabel(stage.stageId)}</h3>
-          </div>
-          <span className={`text-xs font-medium px-2 py-1 rounded-full whitespace-nowrap ${badgeClass}`}>
-            {statusLabel}
-          </span>
-        </div>
-
-        {/* Queue count */}
-        <div className="flex items-baseline gap-2 flex-wrap">
-          <span className="text-3xl font-bold text-gray-900">{total}</span>
-          <span className="text-sm text-gray-500">meter{total !== 1 ? 's' : ''} queued</span>
-          <div className="ml-auto flex items-center gap-1.5 flex-wrap justify-end">
-            {total > 0 && (
-              <button
-                onClick={onQueueBadgeClick}
-                className="text-xs font-medium text-green-700 bg-green-100 px-2 py-0.5 rounded-full hover:bg-green-200 transition-colors cursor-pointer"
-              >
-                {total} queued
-              </button>
-            )}
-            {reworkCount > 0 && (
-              <button
-                onClick={onReworkBadgeClick}
-                className="text-xs font-medium text-yellow-700 bg-yellow-100 px-2 py-0.5 rounded-full hover:bg-yellow-200 transition-colors cursor-pointer"
-              >
-                {reworkCount} rework
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Operator dropdown */}
-        <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1">Operator</label>
-          <select
-            value={operator}
-            onChange={e => onOperatorChange(stage.stageId, e.target.value)}
-            className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white text-gray-800 focus:outline-none focus:ring-2 transition-shadow"
-            style={{ '--tw-ring-color': 'var(--color-primary)' } as React.CSSProperties}
-          >
-            {operatorOptions.map(op => (
-              <option key={op.id} value={op.id}>
-                {op.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Date range selector — shown when an operator is assigned */}
-        {operator !== UNASSIGNED_VALUE && (
-          <DateRangeSelector
-            stationId={stage.stationId}
-            value={dateRange}
-            onChange={onDateRangeChange}
-          />
-        )}
-
-        {/* Machine status — read-only, operator sets from their station */}
-        <MachineStatusDisplay
-          stationId={stage.stationId}
-          status={machineStatus}
-        />
-
-        {/* Station 1 extra actions */}
-        {isStation1 && (
-          <div className="flex flex-col gap-2">
-            <div className="flex gap-2">
-              <button
-                onClick={onExcelUpload}
-                className="flex-1 text-sm font-medium border border-gray-300 text-gray-700 rounded-lg px-3 py-2 hover:bg-gray-50 transition-colors flex items-center justify-center gap-1.5"
-              >
-                <svg className="w-4 h-4 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-                </svg>
-                Upload Excel
-              </button>
-              <button
-                onClick={onManualAdd}
-                className="flex-1 text-sm font-medium text-white rounded-lg px-3 py-2 hover:opacity-90 transition-opacity flex items-center justify-center gap-1.5"
-                style={{ background: 'var(--color-primary)' }}
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                Add +
-              </button>
-            </div>
-
-            {pendingMeters.length > 0 && (
-              <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
-                <p className="text-xs font-semibold text-blue-700 mb-2">
-                  {pendingMeters.length} meter{pendingMeters.length !== 1 ? 's' : ''} pending queue
-                </p>
-                <ul className="space-y-1 max-h-28 overflow-y-auto">
-                  {pendingMeters.map((m, i) => (
-                    <li key={i} className="text-xs text-blue-800 font-mono flex gap-2">
-                      <span>{m.serialNumber}</span>
-                      <span className="text-blue-500">{m.meterType}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
 // Manual Add Panel (inline modal)
 // ---------------------------------------------------------------------------
 
@@ -792,6 +624,537 @@ function ManualAddPanel({
 }
 
 // ---------------------------------------------------------------------------
+// Add Work Orders Modal (#36) — two-tab modal (Manual + Upload) for WS1
+// ---------------------------------------------------------------------------
+
+function AddWorkOrdersModal({
+  open,
+  onAddManual,
+  onAddExcel,
+  onCancel,
+}: {
+  open: boolean
+  onAddManual: (meter: ParsedMeter) => void
+  onAddExcel: (rows: ParsedMeter[]) => void
+  onCancel: () => void
+}) {
+  const [tab, setTab] = useState<'manual' | 'upload'>('manual')
+
+  // Manual tab state
+  const [serial, setSerial] = useState('')
+  const [meterType, setMeterType] = useState('')
+  const serialRef = useRef<HTMLInputElement>(null)
+
+  // Upload tab state
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [uploadState, setUploadState] = useState<{
+    status: 'idle' | 'parsing' | 'preview' | 'error'
+    fileName: string
+    rows: ParsedMeter[]
+    errorMessage: string
+  }>({ status: 'idle', fileName: '', rows: [], errorMessage: '' })
+
+  const handleTabSwitch = (newTab: 'manual' | 'upload') => {
+    setTab(newTab)
+    // Reset the other tab's state
+    if (newTab === 'manual') {
+      setUploadState({ status: 'idle', fileName: '', rows: [], errorMessage: '' })
+    } else {
+      setSerial('')
+      setMeterType('')
+    }
+  }
+
+  const handleManualConfirm = () => {
+    const s = serial.trim()
+    const t = meterType.trim()
+    if (!s || !t) return
+    onAddManual({ serialNumber: s, meterType: t })
+    setSerial('')
+    setMeterType('')
+    serialRef.current?.focus()
+    onCancel()
+  }
+
+  const handleManualKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') handleManualConfirm()
+    if (e.key === 'Escape') onCancel()
+  }
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+
+    setUploadState({ status: 'parsing', fileName: file.name, rows: [], errorMessage: '' })
+
+    try {
+      const XLSX = await import('xlsx')
+      const buffer = await file.arrayBuffer()
+      const workbook = XLSX.read(buffer, { type: 'array' })
+      const sheetName = workbook.SheetNames[0]
+      if (!sheetName) throw new Error('No sheets found in the file')
+      const sheet = workbook.Sheets[sheetName]
+      const raw = XLSX.utils.sheet_to_json(sheet, { defval: '' }) as Record<string, unknown>[]
+
+      const rows: ParsedMeter[] = raw.map((row, idx) => {
+        const serialNumber =
+          String(
+            row['Serial Number'] ??
+            row['serial_number'] ??
+            row['serialNumber'] ??
+            row['SN'] ??
+            row['serial'] ??
+            Object.values(row)[0] ??
+            ''
+          ).trim() || `ROW-${idx + 1}`
+        const meterType =
+          String(
+            row['Meter Type'] ??
+            row['meter_type'] ??
+            row['meterType'] ??
+            row['Type'] ??
+            row['type'] ??
+            Object.values(row)[1] ??
+            ''
+          ).trim() || 'Unknown'
+        return { serialNumber, meterType }
+      })
+
+      setUploadState(prev => ({ ...prev, status: 'preview', rows }))
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unknown error parsing file'
+      setUploadState(prev => ({ ...prev, status: 'error', errorMessage: msg }))
+    }
+  }
+
+  const handleUploadConfirm = () => {
+    if (uploadState.status !== 'preview') return
+    onAddExcel(uploadState.rows)
+    setUploadState({ status: 'idle', fileName: '', rows: [], errorMessage: '' })
+    onCancel()
+  }
+
+  if (!open) return null
+
+  const manualConfirmDisabled = !serial.trim() || !meterType.trim()
+  const uploadConfirmDisabled = uploadState.status !== 'preview'
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+      <div
+        className="rounded-xl shadow-2xl w-full max-w-2xl mx-4 overflow-hidden flex flex-col"
+        style={{ background: 'var(--color-card-bg)', maxHeight: '85vh' }}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Add Work Orders"
+      >
+        {/* Header */}
+        <div
+          className="px-6 py-4 border-b flex items-center justify-between shrink-0"
+          style={{ borderColor: 'var(--color-card-border)' }}
+        >
+          <h2 className="text-lg font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+            Add Work Orders
+          </h2>
+          <button
+            onClick={onCancel}
+            className="p-1 rounded transition-colors"
+            style={{ color: 'var(--color-text-secondary)' }}
+            aria-label="Close modal"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Tabs */}
+        <div
+          className="flex border-b shrink-0"
+          style={{ borderColor: 'var(--color-card-border)' }}
+        >
+          {(['manual', 'upload'] as const).map(t => (
+            <button
+              key={t}
+              onClick={() => handleTabSwitch(t)}
+              className="flex-1 py-3 text-sm font-semibold transition-colors"
+              style={
+                tab === t
+                  ? { color: 'var(--color-primary)', borderBottom: '2px solid var(--color-primary)' }
+                  : { color: 'var(--color-text-secondary)', borderBottom: '2px solid transparent' }
+              }
+            >
+              {t === 'manual' ? 'Manual' : 'Upload'}
+            </button>
+          ))}
+        </div>
+
+        {/* Body */}
+        <div className="px-6 py-4 overflow-y-auto flex-1">
+          {/* Manual tab */}
+          {tab === 'manual' && (
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Serial Number</label>
+                <input
+                  ref={serialRef}
+                  autoFocus
+                  type="text"
+                  value={serial}
+                  onChange={e => setSerial(e.target.value)}
+                  onKeyDown={handleManualKeyDown}
+                  placeholder="e.g. SN-20240001"
+                  className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 transition-shadow"
+                  style={{ '--tw-ring-color': 'var(--color-primary)' } as React.CSSProperties}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Meter Type</label>
+                <input
+                  type="text"
+                  value={meterType}
+                  onChange={e => setMeterType(e.target.value)}
+                  onKeyDown={handleManualKeyDown}
+                  placeholder="e.g. 3-Phase 10A"
+                  className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 transition-shadow"
+                  style={{ '--tw-ring-color': 'var(--color-primary)' } as React.CSSProperties}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Upload tab */}
+          {tab === 'upload' && (
+            <div>
+              {/* Hidden file input — inside the modal */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".xlsx,.xls"
+                className="hidden"
+                onChange={handleFileChange}
+                aria-hidden="true"
+              />
+
+              {uploadState.status === 'idle' && (
+                <div className="flex flex-col items-center justify-center py-12 gap-4">
+                  <svg className="w-12 h-12 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                  </svg>
+                  <p className="text-sm text-gray-500">Select an Excel file (.xlsx or .xls) to upload</p>
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors"
+                    style={{ background: 'var(--color-primary)' }}
+                  >
+                    Choose File
+                  </button>
+                </div>
+              )}
+
+              {uploadState.status === 'parsing' && (
+                <div className="flex items-center gap-3 py-12 justify-center text-gray-500">
+                  <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  <span>Parsing {uploadState.fileName}...</span>
+                </div>
+              )}
+
+              {uploadState.status === 'error' && (
+                <div className="py-8 text-center">
+                  <div className="text-red-500 font-medium mb-2">Failed to parse file</div>
+                  <p className="text-sm text-gray-500 mb-4">{uploadState.errorMessage}</p>
+                  <button
+                    onClick={() => {
+                      setUploadState({ status: 'idle', fileName: '', rows: [], errorMessage: '' })
+                    }}
+                    className="text-sm text-blue-600 hover:underline"
+                  >
+                    Try another file
+                  </button>
+                </div>
+              )}
+
+              {uploadState.status === 'preview' && (
+                <>
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-sm font-medium text-gray-700">
+                      {uploadState.rows.length} meter{uploadState.rows.length !== 1 ? 's' : ''} found in {uploadState.fileName}
+                    </span>
+                    <button
+                      onClick={() => {
+                        setUploadState({ status: 'idle', fileName: '', rows: [], errorMessage: '' })
+                        fileInputRef.current?.click()
+                      }}
+                      className="text-xs text-blue-600 hover:underline"
+                    >
+                      Change file
+                    </button>
+                  </div>
+                  <table className="w-full text-sm border-collapse">
+                    <thead>
+                      <tr className="bg-gray-50">
+                        <th className="text-left px-3 py-2 font-semibold text-gray-600 border border-gray-200">#</th>
+                        <th className="text-left px-3 py-2 font-semibold text-gray-600 border border-gray-200">Serial Number</th>
+                        <th className="text-left px-3 py-2 font-semibold text-gray-600 border border-gray-200">Meter Type</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {uploadState.rows.map((row, idx) => (
+                        <tr key={idx} className="hover:bg-gray-50">
+                          <td className="px-3 py-2 border border-gray-200 text-gray-400">{idx + 1}</td>
+                          <td className="px-3 py-2 border border-gray-200 font-mono text-gray-800">{row.serialNumber}</td>
+                          <td className="px-3 py-2 border border-gray-200 text-gray-700">{row.meterType}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div
+          className="px-6 py-4 border-t flex justify-end gap-3 shrink-0"
+          style={{ borderColor: 'var(--color-card-border)' }}
+        >
+          <button
+            onClick={onCancel}
+            className="px-4 py-2 text-sm font-medium rounded-lg border transition-colors"
+            style={{
+              borderColor: 'var(--color-card-border)',
+              color: 'var(--color-text-primary)',
+              background: 'transparent',
+            }}
+          >
+            Cancel
+          </button>
+          {tab === 'manual' ? (
+            <button
+              onClick={handleManualConfirm}
+              disabled={manualConfirmDisabled}
+              className="px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors disabled:opacity-50"
+              style={{ background: 'var(--color-primary)' }}
+            >
+              Add Meter
+            </button>
+          ) : (
+            <button
+              onClick={handleUploadConfirm}
+              disabled={uploadConfirmDisabled}
+              className="px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors disabled:opacity-50"
+              style={{ background: 'var(--color-primary)' }}
+            >
+              {uploadState.status === 'preview'
+                ? `Add ${uploadState.rows.length} meter${uploadState.rows.length !== 1 ? 's' : ''} to Queue`
+                : 'Add to Queue'}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Station Card — updated props per spec
+// ---------------------------------------------------------------------------
+
+type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
+
+function StationCard({
+  stage,
+  total,
+  reworkCount,
+  savedOperator,
+  draftOperator,
+  saveStatus,
+  onOperatorDraft,
+  onSaveOperator,
+  operatorOptions,
+  dateRange,
+  onDateRangeChange,
+  machineStatus,
+  pendingMeters,
+  onAddWorkOrders,
+  onQueueBadgeClick,
+  onReworkBadgeClick,
+}: {
+  stage: (typeof STAGES)[number]
+  total: number
+  reworkCount: number
+  savedOperator: string
+  draftOperator: string | undefined
+  saveStatus: SaveStatus
+  onOperatorDraft: (stageId: string, op: string) => void
+  onSaveOperator: (stageId: string) => void
+  operatorOptions: OperatorOption[]
+  dateRange: DateRange | null
+  onDateRangeChange: (stationId: string, range: DateRange) => void
+  machineStatus: MachineStatus | null
+  pendingMeters: ParsedMeter[]
+  onAddWorkOrders: () => void
+  onQueueBadgeClick: () => void
+  onReworkBadgeClick: () => void
+}) {
+  const isStation1 = stage.stageId === 'stage_01'
+
+  // Effective operator shown in dropdown
+  const effectiveOperator = draftOperator ?? savedOperator ?? UNASSIGNED_VALUE
+
+  const accentColor =
+    machineStatus === 'green'  ? '#22c55e' :
+    machineStatus === 'yellow' ? '#eab308' :
+    machineStatus === 'red'    ? '#ef4444' :
+    'var(--color-card-border)'
+
+  // Save button label
+  const saveLabel =
+    saveStatus === 'saving' ? 'Saving…' :
+    saveStatus === 'saved'  ? 'Saved ✓' :
+    saveStatus === 'error'  ? 'Error — retry' :
+    'Save Info'
+
+  // Disable save button when no draft or draft equals saved
+  const saveDisabled =
+    saveStatus === 'saving' ||
+    draftOperator === undefined ||
+    draftOperator === savedOperator
+
+  return (
+    <div
+      className="bg-white rounded-xl shadow-sm overflow-hidden flex flex-col"
+      style={{ borderLeft: `4px solid ${accentColor}` }}
+    >
+      <div className="p-5 flex flex-col gap-4 flex-1">
+        {/* Header row — #38: replace static badge with clickable pills */}
+        <div className="flex items-start justify-between gap-2">
+          <h3 className="text-sm font-semibold text-gray-800 leading-snug">{stationLabel(stage.stageId)}</h3>
+          <div className="flex items-center gap-1.5 flex-wrap justify-end">
+            {total === 0 && reworkCount === 0 ? (
+              <span className="text-xs font-medium px-2 py-1 rounded-full whitespace-nowrap bg-gray-100 text-gray-400 cursor-default">
+                No Queue
+              </span>
+            ) : (
+              <>
+                {total > 0 && (
+                  <button
+                    onClick={onQueueBadgeClick}
+                    className="text-xs font-medium px-2 py-1 rounded-full whitespace-nowrap bg-green-100 text-green-700 hover:bg-green-200 transition-colors"
+                  >
+                    {total} queued
+                  </button>
+                )}
+                {reworkCount > 0 && (
+                  <button
+                    onClick={onReworkBadgeClick}
+                    className="text-xs font-medium px-2 py-1 rounded-full whitespace-nowrap bg-yellow-100 text-yellow-700 hover:bg-yellow-200 transition-colors"
+                  >
+                    {reworkCount} rework
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Queue count */}
+        <div className="flex items-baseline gap-2 flex-wrap">
+          <span className="text-3xl font-bold text-gray-900">{total}</span>
+          <span className="text-sm text-gray-500">meter{total !== 1 ? 's' : ''} queued</span>
+        </div>
+
+        {/* Operator dropdown + Save Info button (#35) */}
+        <div>
+          <label className="block text-xs font-medium text-gray-500 mb-1">Operator</label>
+          <select
+            value={effectiveOperator}
+            onChange={e => onOperatorDraft(stage.stageId, e.target.value)}
+            className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white text-gray-800 focus:outline-none focus:ring-2 transition-shadow"
+            style={{ '--tw-ring-color': 'var(--color-primary)' } as React.CSSProperties}
+          >
+            {operatorOptions.map(op => (
+              <option key={op.id} value={op.id}>
+                {op.label}
+              </option>
+            ))}
+          </select>
+
+          {/* Save Info button */}
+          <button
+            onClick={() => onSaveOperator(stage.stageId)}
+            disabled={saveDisabled}
+            className="mt-2 w-full text-sm font-semibold rounded-lg px-3 py-2 transition-all border disabled:cursor-not-allowed"
+            style={
+              saveStatus === 'saved'
+                ? { background: '#dcfce7', color: '#166534', borderColor: '#86efac' }
+                : saveStatus === 'error'
+                ? { background: '#fee2e2', color: '#991b1b', borderColor: '#fca5a5' }
+                : saveDisabled
+                ? { background: 'transparent', color: '#9ca3af', borderColor: '#e5e7eb' }
+                : { background: 'var(--color-primary)', color: '#ffffff', borderColor: 'var(--color-primary)' }
+            }
+          >
+            {saveLabel}
+          </button>
+        </div>
+
+        {/* Date range selector — shown when an operator is assigned */}
+        {effectiveOperator !== UNASSIGNED_VALUE && (
+          <DateRangeSelector
+            stationId={stage.stationId}
+            value={dateRange}
+            onChange={onDateRangeChange}
+          />
+        )}
+
+        {/* Machine status — read-only, operator sets from their station */}
+        <MachineStatusDisplay
+          stationId={stage.stationId}
+          status={machineStatus}
+        />
+
+        {/* Station 1 extra actions — #36: single Add Work Orders button */}
+        {isStation1 && (
+          <div className="flex flex-col gap-2">
+            <button
+              onClick={onAddWorkOrders}
+              className="w-full text-sm font-medium border border-gray-300 text-gray-700 rounded-lg px-3 py-2 hover:bg-gray-50 transition-colors flex items-center justify-center gap-1.5"
+            >
+              <svg className="w-4 h-4 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+              </svg>
+              Add Work Orders
+            </button>
+
+            {pendingMeters.length > 0 && (
+              <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
+                <p className="text-xs font-semibold text-blue-700 mb-2">
+                  {pendingMeters.length} meter{pendingMeters.length !== 1 ? 's' : ''} pending queue
+                </p>
+                <ul className="space-y-1 max-h-28 overflow-y-auto">
+                  {pendingMeters.map((m, i) => (
+                    <li key={i} className="text-xs text-blue-800 font-mono flex gap-2">
+                      <span>{m.serialNumber}</span>
+                      <span className="text-blue-500">{m.meterType}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Main Page
 // ---------------------------------------------------------------------------
 
@@ -816,33 +1179,38 @@ export default function WorkstationsPage() {
 function WorkstationsPageInner() {
   const { counts } = useStationCounts()
   const { operatorOptions } = useOperatorOptions()
+  const { users } = useUsers()
   const { statuses: machineStatuses } = useMachineStatuses(STAGES.map(s => s.stationId))
   const today = new Date()
+
+  // #34 — derive saved operators from Firestore users data
+  const savedOperators = useMemo(() => {
+    const map: Record<string, string> = Object.fromEntries(STAGES.map(s => [s.stageId, UNASSIGNED_VALUE]))
+    users.forEach(user => {
+      ;(user.workstationIds ?? []).forEach(stationId => {
+        const stageId = stationId.replace('ws_', 'stage_')
+        if (stageId in map) map[stageId] = user.uid
+      })
+    })
+    return map
+  }, [users])
+
+  // #35 — draft operators (unsaved selections)
+  const [draftOperators, setDraftOperators] = useState<Record<string, string>>({})
+
+  // #35 — save statuses per stage
+  const [saveStatuses, setSaveStatuses] = useState<Record<string, SaveStatus>>({})
 
   // Date range per station (keyed by stationId), loaded from localStorage on mount
   const [dateRanges, setDateRanges] = useState<Record<string, DateRange | null>>(() =>
     Object.fromEntries(STAGES.map(s => [s.stationId, loadDateRange(s.stationId)]))
   )
 
-  // Operator assignments — stores operator uid ('' = Unassigned)
-  const [operators, setOperators] = useState<Record<string, string>>(() =>
-    Object.fromEntries(STAGES.map(s => [s.stageId, UNASSIGNED_VALUE]))
-  )
-
-  // Station 1 pending meters (queued locally, will go to Firestore once data layer merges)
+  // Station 1 pending meters
   const [pendingMeters, setPendingMeters] = useState<ParsedMeter[]>([])
 
-  // Excel modal
-  const [excelModal, setExcelModal] = useState<ExcelModalState>({
-    open: false,
-    fileName: '',
-    status: 'parsing',
-    rows: [],
-    errorMessage: '',
-  })
-
-  // Manual add panel
-  const [manualOpen, setManualOpen] = useState(false)
+  // Add Work Orders modal (#36)
+  const [addWorkOrdersOpen, setAddWorkOrdersOpen] = useState(false)
 
   // Queue / Rework order modals
   const [orderModal, setOrderModal] = useState<{
@@ -874,117 +1242,65 @@ function WorkstationsPageInner() {
     setOrderModal(prev => ({ ...prev, open: false }))
   }, [])
 
-  // Hidden file input ref
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  // #35 — draft handler (no Firestore write)
+  const handleOperatorDraft = useCallback((stageId: string, op: string) => {
+    setDraftOperators(prev => ({ ...prev, [stageId]: op }))
+  }, [])
 
-  const handleOperatorChange = useCallback(async (stageId: string, op: string) => {
+  // #35 — save handler (writes to Firestore, clears draft on success)
+  const handleSaveOperator = useCallback(async (stageId: string) => {
     const stationId = stageId.replace('stage_', 'ws_')
-    const prevOp = operators[stageId] ?? UNASSIGNED_VALUE
+    const prevOp = savedOperators[stageId] ?? UNASSIGNED_VALUE
+    const newOp = draftOperators[stageId] ?? UNASSIGNED_VALUE
 
-    // Remove stationId from previous operator's workstationIds
-    if (prevOp && prevOp !== UNASSIGNED_VALUE) {
-      try {
+    setSaveStatuses(prev => ({ ...prev, [stageId]: 'saving' }))
+
+    try {
+      // Remove stationId from previous operator's workstationIds
+      if (prevOp && prevOp !== UNASSIGNED_VALUE) {
         await updateDoc(doc(db, 'users', prevOp), { workstationIds: arrayRemove(stationId) })
-      } catch (e) { console.error('Failed to unassign previous operator', e) }
-    }
-    // Add stationId to new operator's workstationIds
-    if (op && op !== UNASSIGNED_VALUE) {
-      try {
-        // Ensure the user doc exists before updating
-        const userSnap = await getDoc(doc(db, 'users', op))
+      }
+      // Add stationId to new operator's workstationIds
+      if (newOp && newOp !== UNASSIGNED_VALUE) {
+        const userSnap = await getDoc(doc(db, 'users', newOp))
         if (userSnap.exists()) {
-          await updateDoc(doc(db, 'users', op), { workstationIds: arrayUnion(stationId) })
+          await updateDoc(doc(db, 'users', newOp), { workstationIds: arrayUnion(stationId) })
         }
-      } catch (e) { console.error('Failed to assign operator', e) }
-    }
+      }
 
-    setOperators(prev => ({ ...prev, [stageId]: op }))
-  }, [operators])
+      // Clear draft on success
+      setDraftOperators(prev => {
+        const next = { ...prev }
+        delete next[stageId]
+        return next
+      })
+      setSaveStatuses(prev => ({ ...prev, [stageId]: 'saved' }))
+
+      // Reset to idle after 2s
+      setTimeout(() => {
+        setSaveStatuses(prev => ({ ...prev, [stageId]: 'idle' }))
+      }, 2000)
+    } catch (e) {
+      console.error('Failed to save operator assignment', e)
+      setSaveStatuses(prev => ({ ...prev, [stageId]: 'error' }))
+    }
+  }, [savedOperators, draftOperators])
 
   const handleDateRangeChange = useCallback((stationId: string, range: DateRange) => {
     saveDateRange(stationId, range)
     setDateRanges(prev => ({ ...prev, [stationId]: range }))
   }, [])
 
-  const handleExcelUploadClick = () => {
-    fileInputRef.current?.click()
-  }
-
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    // Reset input so same file can be re-uploaded
-    e.target.value = ''
-
-    setExcelModal({ open: true, fileName: file.name, status: 'parsing', rows: [], errorMessage: '' })
-
-    try {
-      const XLSX = await import('xlsx')
-      const buffer = await file.arrayBuffer()
-      const workbook = XLSX.read(buffer, { type: 'array' })
-      const sheetName = workbook.SheetNames[0]
-      if (!sheetName) throw new Error('No sheets found in the file')
-      const sheet = workbook.Sheets[sheetName]
-      const raw = XLSX.utils.sheet_to_json(sheet, { defval: '' }) as Record<string, unknown>[]
-
-      const rows: ParsedMeter[] = raw.map((row, idx) => {
-        // Accept flexible column names: serial_number, Serial Number, serialNumber, SN, etc.
-        const serialNumber =
-          String(
-            row['Serial Number'] ??
-            row['serial_number'] ??
-            row['serialNumber'] ??
-            row['SN'] ??
-            row['serial'] ??
-            Object.values(row)[0] ??
-            ''
-          ).trim() || `ROW-${idx + 1}`
-        const meterType =
-          String(
-            row['Meter Type'] ??
-            row['meter_type'] ??
-            row['meterType'] ??
-            row['Type'] ??
-            row['type'] ??
-            Object.values(row)[1] ??
-            ''
-          ).trim() || 'Unknown'
-        return { serialNumber, meterType }
-      })
-
-      setExcelModal(prev => ({ ...prev, status: 'preview', rows }))
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Unknown error parsing file'
-      setExcelModal(prev => ({ ...prev, status: 'error', errorMessage: msg }))
-    }
-  }
-
-  const handleExcelConfirm = (rows: ParsedMeter[]) => {
-    setPendingMeters(prev => [...prev, ...rows])
-    setExcelModal({ open: false, fileName: '', status: 'parsing', rows: [], errorMessage: '' })
-  }
-
-  const handleExcelCancel = () => {
-    setExcelModal({ open: false, fileName: '', status: 'parsing', rows: [], errorMessage: '' })
-  }
-
-  const handleManualAdd = (meter: ParsedMeter) => {
+  const handleAddManual = (meter: ParsedMeter) => {
     setPendingMeters(prev => [...prev, meter])
+  }
+
+  const handleAddExcel = (rows: ParsedMeter[]) => {
+    setPendingMeters(prev => [...prev, ...rows])
   }
 
   return (
     <div className="min-h-screen" style={{ background: 'var(--color-content-bg)' }}>
-      {/* Hidden file input */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".xlsx,.xls"
-        className="hidden"
-        onChange={handleFileChange}
-        aria-hidden="true"
-      />
-
       {/* Page header */}
       <div
         className="sticky top-0 z-30 px-6 py-4 border-b"
@@ -1005,15 +1321,17 @@ function WorkstationsPageInner() {
                 stage={stage}
                 total={count.total}
                 reworkCount={count.reworkCount}
-                operator={operators[stage.stageId] ?? UNASSIGNED_VALUE}
-                onOperatorChange={handleOperatorChange}
+                savedOperator={savedOperators[stage.stageId] ?? UNASSIGNED_VALUE}
+                draftOperator={draftOperators[stage.stageId]}
+                saveStatus={saveStatuses[stage.stageId] ?? 'idle'}
+                onOperatorDraft={handleOperatorDraft}
+                onSaveOperator={handleSaveOperator}
                 operatorOptions={operatorOptions}
                 dateRange={dateRanges[stage.stationId] ?? null}
                 onDateRangeChange={handleDateRangeChange}
                 machineStatus={machineStatuses[stage.stationId] ?? null}
                 pendingMeters={stage.stageId === 'stage_01' ? pendingMeters : []}
-                onExcelUpload={handleExcelUploadClick}
-                onManualAdd={() => setManualOpen(true)}
+                onAddWorkOrders={() => setAddWorkOrdersOpen(true)}
                 onQueueBadgeClick={() => openQueueModal(stage.stageId, count.total)}
                 onReworkBadgeClick={() => openReworkModal(stage.stageId, count.reworkCount)}
               />
@@ -1023,16 +1341,11 @@ function WorkstationsPageInner() {
       </div>
 
       {/* Modals */}
-      <ExcelModal
-        state={excelModal}
-        onConfirm={handleExcelConfirm}
-        onCancel={handleExcelCancel}
-      />
-
-      <ManualAddPanel
-        open={manualOpen}
-        onAdd={handleManualAdd}
-        onClose={() => setManualOpen(false)}
+      <AddWorkOrdersModal
+        open={addWorkOrdersOpen}
+        onAddManual={handleAddManual}
+        onAddExcel={handleAddExcel}
+        onCancel={() => setAddWorkOrdersOpen(false)}
       />
 
       <OrderListModal
@@ -1042,7 +1355,6 @@ function WorkstationsPageInner() {
         orders={orderModal.orders}
         onClose={closeOrderModal}
       />
-
     </div>
   )
 }

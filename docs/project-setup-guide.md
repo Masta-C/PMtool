@@ -103,16 +103,16 @@ Recommended pattern (XSS-safe, Edge Runtime compatible):
 ```
 Login page
   → signInWithEmailAndPassword
-  → getIdTokenResult()          — reads role claim from token
+  → getIdTokenResult()              — reads role claim from token
   → POST /api/auth/session { idToken }
-      → Admin SDK verifyIdToken
-      → Set HTTP-only cookie: <app>-session = idToken
-  → router.replace(ROLE_REDIRECT[role])
+      → jose jwtVerify (JWKS)       — no Admin SDK / service account needed in Cloud Run
+      → Set HTTP-only cookie: __session = role   ← MUST be __session, plain role string
+  → window.location.replace(ROLE_REDIRECT[role]) ← NOT router.replace (RSC fires before cookie commits)
 
 Middleware (Edge Runtime)
-  → Read cookie
-  → Decode JWT with atob()      — NOT Buffer.from(str, 'base64url') — fails in Edge Runtime
-  → Check role, redirect accordingly
+  → request.cookies.get('__session').value  — plain ASCII role string, never encoded
+  → canAccess(role, pathname)
+  → Wrap ALL responses with noCache() — prevents Firebase CDN caching auth redirects
 
 Sign out
   → DELETE /api/auth/session    — clears cookie
@@ -120,10 +120,48 @@ Sign out
   → window.location.href = '/login'
 ```
 
-- [ ] Store role as a **JWT custom claim** — fast, no Firestore lookup per request
-- [ ] Use `atob()` for JWT decoding in middleware — `Buffer.from(..., 'base64url')` is not available in Edge Runtime
-- [ ] Auth layout must be a pass-through only — no redirect logic; the login page handles the redirect after the session cookie is confirmed set
+**CRITICAL — Firebase Hosting CDN cookie rule:**
+Firebase Hosting CDN strips **every cookie** from requests before forwarding to Cloud Run / Cloud Functions — **except `__session`**. This is documented Firebase behavior, not a bug. If you name your session cookie anything else (e.g. `app-session`, `pmtool-session`) it will be silently dropped at the CDN layer. Middleware will see no cookie and redirect to `/login` on every request, even after a successful login.
+
+**CRITICAL — Next.js `cookies.set()` encoding:**
+`NextResponse.cookies.set()` percent-encodes values that contain `{`, `"`, or `:`. Storing a JSON object like `{"uid":"...","role":"admin"}` results in `%7B%22uid%22...` in the cookie jar — which `JSON.parse()` cannot read. Store only the role string (`admin`, `supervisor`, etc.) — pure ASCII, never encoded.
+
+```typescript
+// session/route.ts — CORRECT
+res.cookies.set('__session', role, {   // plain role string, not JSON
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: 'lax',
+  maxAge: 60 * 60,
+  path: '/',
+})
+
+// middleware.ts — CORRECT
+const session = request.cookies.get('__session')
+const role = session?.value as Role | null   // read directly, no JSON.parse
+```
+
+**CRITICAL — Cache-Control on all middleware responses:**
+Firebase Hosting CDN can cache middleware redirect responses (e.g. a 307 for `/dashboard` served to an unauthenticated user). Wrap every `NextResponse` in middleware with `Cache-Control: no-store, private`:
+
+```typescript
+function noCache(res: NextResponse): NextResponse {
+  res.headers.set('Cache-Control', 'no-store, private')
+  return res
+}
+// Wrap every return: return noCache(NextResponse.redirect(...))
+```
+
+**CRITICAL — `window.location.replace` not `router.replace` after login:**
+Next.js `router.replace` triggers an RSC prefetch immediately. If that prefetch fires before the `Set-Cookie` header from the session API is committed by the browser, the middleware sees no cookie and redirects back to `/login`. Use `window.location.replace(url)` for a full browser navigation that waits for the response to fully commit.
+
+- [ ] Cookie MUST be named `__session` — Firebase Hosting CDN only forwards this one
+- [ ] Store only the role string in the cookie — not JSON, not a JWT
+- [ ] Store role as a **Firebase custom claim** — fast, no Firestore lookup per request
+- [ ] Auth layout must be a pass-through only — no redirect logic; the login page handles the redirect after the session API returns 200
 - [ ] `getIdTokenResult()` in `useAuth` must NOT force-refresh — login already refreshes; force-refresh on every auth state change causes sign-out on emulator failure
+- [ ] Use `jose` + `createRemoteJWKSet` with `timeoutDuration: 10_000` — prevents JWKS fetch hanging on Cloud Run cold start
+- [ ] Add `noCache()` wrapper to ALL middleware responses
 
 ### 6. RBAC
 
@@ -374,7 +412,12 @@ npm test              # all tests green
 
 | Problem | Root cause | Fix |
 |---|---|---|
-| JWT decode fails in middleware | `Buffer.from(str, 'base64url')` not available in Edge Runtime | Use `atob()` with base64url → base64 conversion |
+| **Login always redirects back to /login on Firebase Hosting** | **Firebase CDN strips all cookies except `__session`** — any other cookie name is silently dropped before Cloud Run receives the request | **Name the session cookie `__session` exactly** — this is the only cookie Firebase Hosting forwards to Cloud Run/Cloud Functions |
+| Cookie value is `%7B%22uid%22...` instead of `admin` | `NextResponse.cookies.set()` URL-encodes values containing `{`, `"`, `:` — JSON objects get mangled | Store only the role string (`admin`, `supervisor`) — pure ASCII, never encoded |
+| Logged-in user bounced back to /login after `router.replace` | `router.replace` triggers RSC prefetch before `Set-Cookie` is committed by the browser | Use `window.location.replace(url)` for a full page navigation that waits for cookie to commit |
+| Firebase CDN cached a 307 for /dashboard | Unauthenticated request to /dashboard was cached by Firebase CDN and served to all subsequent visitors | Add `Cache-Control: no-store, private` to every middleware response via a `noCache()` wrapper |
+| Session API hangs on first request after idle | `jose createRemoteJWKSet` has no timeout — hangs indefinitely on JWKS fetch during Cloud Run cold start | Pass `timeoutDuration: 10_000` to `createRemoteJWKSet` |
+| JWT decode fails in middleware | `Buffer.from(str, 'base64url')` not available in Edge Runtime | Don't store the JWT in the cookie at all — store the role string and read it directly |
 | Emulator connects twice on Fast Refresh | Module-level boolean resets on HMR | Guard with `window.__appEmulatorsConnected` |
 | Firestore persistence enables twice on Fast Refresh | Same as above — module scope resets | Guard with a second `window.__appPersistenceEnabled` flag |
 | Login redirects to blank dashboard | Auth layout fired redirect before session cookie was set | Auth layout must be a pass-through; login page redirects after session API returns 200 |
@@ -384,3 +427,40 @@ npm test              # all tests green
 | `ts-node` cyclic module errors | Using `node --loader ts-node/esm` on Node 22+ | Use `npx ts-node --esm` instead |
 | Stale session cookie in browser | Cold emulator restart invalidates old tokens | Always use incognito after a cold start |
 | Second developer can't run the project | No `.env.example` committed | Create `.env.example` with dummy values before anyone else joins |
+
+### Debugging auth failures on Firebase Hosting — correct methodology
+
+When login works locally (emulator) but fails on Firebase Hosting, run this sequence:
+
+```bash
+# 1. Confirm what cookie the server actually receives
+curl -H "Cookie: __session=admin" https://<project>.web.app/dashboard -v 2>&1 | grep -E "< HTTP|Location"
+
+# 2. Test the Cloud Run URL directly (bypass Firebase CDN)
+#    Get the Cloud Run URL from: Firebase Console → Hosting → Advanced → Backend
+curl -H "Cookie: __session=admin" https://<cloud-run-url>/dashboard -v 2>&1 | grep -E "< HTTP|Location"
+
+# If (1) gives 307 but (2) gives 200: CDN is stripping the cookie → rename to __session
+# If both give 307: middleware logic is wrong — check cookie value format
+# If both give 200: client-side navigation issue — check router.replace vs window.location
+
+# 3. Check what the server actually reads
+curl https://<project>.web.app/api/debug/cookie  # add a temporary debug endpoint
+```
+
+Add a temporary `/api/debug/cookie` endpoint during diagnosis:
+```typescript
+// src/app/api/debug/cookie/route.ts — DELETE AFTER DIAGNOSIS
+import { NextRequest, NextResponse } from 'next/server'
+export async function GET(req: NextRequest) {
+  const session = req.cookies.get('__session')
+  return NextResponse.json({
+    present: !!session,
+    value: session?.value ?? null,
+    allCookieNames: req.cookies.getAll().map(c => c.name),
+  })
+}
+```
+- `present: false` → cookie not reaching Cloud Run (CDN stripping it — wrong cookie name)
+- `value: '%7B...'` → JSON was stored, Next.js encoded it — switch to plain role string
+- `value: 'admin'` → cookie is correct, issue is in middleware logic or client navigation
