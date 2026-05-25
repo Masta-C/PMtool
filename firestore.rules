@@ -54,5 +54,14 @@ service cloud.firestore {
         allow delete: if false;
       }
     }
+
+    // Wildcard rule required for collectionGroup('stageHistory') queries.
+    // The nested rule above handles direct doc reads; this covers cross-collection queries
+    // used by dashboard metrics and reports (collectionGroup scans all stageHistory subcollections).
+    match /{path=**}/stageHistory/{entryId} {
+      allow read: if isAuth();
+      allow create, update: if isOperatorOrAbove() && !isQA();
+      allow delete: if false;
+    }
   }
 }

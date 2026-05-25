@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useCallback, useMemo } from 'react'
-import { doc, getDoc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore'
+import { doc, arrayRemove, writeBatch } from 'firebase/firestore'
 import { db } from '@/lib/firebase/client'
 import { useAuth } from '@/hooks/useAuth'
 import { useUsers } from '@/hooks/useUsers'
@@ -1248,6 +1248,10 @@ function WorkstationsPageInner() {
   }, [])
 
   // #35 — save handler (writes to Firestore, clears draft on success)
+  // Enforces 1-operator-per-station invariant:
+  //   1. Remove this station from the previous operator
+  //   2. Remove ALL stations from the new operator (they can only be at one station)
+  //   3. Assign new operator to this station
   const handleSaveOperator = useCallback(async (stageId: string) => {
     const stationId = stageId.replace('stage_', 'ws_')
     const prevOp = savedOperators[stageId] ?? UNASSIGNED_VALUE
@@ -1256,17 +1260,22 @@ function WorkstationsPageInner() {
     setSaveStatuses(prev => ({ ...prev, [stageId]: 'saving' }))
 
     try {
-      // Remove stationId from previous operator's workstationIds
-      if (prevOp && prevOp !== UNASSIGNED_VALUE) {
-        await updateDoc(doc(db, 'users', prevOp), { workstationIds: arrayRemove(stationId) })
+      const batch = writeBatch(db)
+
+      // Step 1: Remove this station from the previous operator
+      if (prevOp && prevOp !== UNASSIGNED_VALUE && prevOp !== newOp) {
+        batch.update(doc(db, 'users', prevOp), { workstationIds: arrayRemove(stationId) })
       }
-      // Add stationId to new operator's workstationIds
+
+      // Step 2 & 3: Assign new operator — wipe all their existing stations, add only this one
+      // This enforces the invariant: one operator can only be at one station at a time
       if (newOp && newOp !== UNASSIGNED_VALUE) {
-        const userSnap = await getDoc(doc(db, 'users', newOp))
-        if (userSnap.exists()) {
-          await updateDoc(doc(db, 'users', newOp), { workstationIds: arrayUnion(stationId) })
-        }
+        batch.update(doc(db, 'users', newOp), { workstationIds: [stationId] })
+      } else if (newOp === UNASSIGNED_VALUE && prevOp && prevOp !== UNASSIGNED_VALUE) {
+        // Unassigning: already handled in Step 1; nothing more to do for newOp
       }
+
+      await batch.commit()
 
       // Clear draft on success
       setDraftOperators(prev => {
