@@ -64,6 +64,7 @@ type ProductionResultFilter = 'all' | 'Pass' | 'Fail'
 type ReworkStatusFilter = 'all' | 'Pending' | 'Resolved'
 
 interface ProductionFilters {
+  orderNum: string
   station: string
   dateFrom: string
   dateTo: string
@@ -303,6 +304,7 @@ function ProductionTab() {
   )
 
   const [filters, setFilters] = useState<ProductionFilters>({
+    orderNum: '',
     station: 'all',
     dateFrom: '',
     dateTo: '',
@@ -382,6 +384,7 @@ function ProductionTab() {
 
   const filtered = useMemo(() => {
     let result = rows.filter(r => {
+      if (filters.orderNum && !r.orderNum.toLowerCase().includes(filters.orderNum.toLowerCase())) return false
       if (filters.station !== 'all' && r.stageId !== filters.station) return false
       if (!inDateRange(r.date, filters.dateFrom, filters.dateTo)) return false
       if (filters.operator !== 'all' && r.operatorId !== filters.operator) return false
@@ -416,9 +419,19 @@ function ProductionTab() {
     <div className="flex flex-col gap-5">
       {/* Filters */}
       <div
-        className="rounded-xl p-4 flex flex-wrap gap-3 items-end"
-        style={{ background: 'var(--color-card-bg)', border: '1px solid var(--color-card-border)' }}
+        className="glass-card rounded-xl p-4 flex flex-wrap gap-3 items-end"
       >
+        <FilterField label="Order #">
+          <input
+            type="text"
+            value={filters.orderNum}
+            onChange={e => updateFilter('orderNum', e.target.value)}
+            placeholder="e.g. SNE-2026-00110"
+            className={INPUT_CLS}
+            style={{ minWidth: '180px' }}
+          />
+        </FilterField>
+
         <FilterField label="Station">
           <select value={filters.station} onChange={e => updateFilter('station', e.target.value)} className={INPUT_CLS}>
             <option value="all">All stations</option>
@@ -467,7 +480,7 @@ function ProductionTab() {
 
         <div className="ml-auto self-end flex gap-2">
           <button
-            onClick={() => setFilters({ station: 'all', dateFrom: '', dateTo: '', operator: 'all', result: 'all', reworkResult: 'all' })}
+            onClick={() => setFilters({ orderNum: '', station: 'all', dateFrom: '', dateTo: '', operator: 'all', result: 'all', reworkResult: 'all' })}
             className="px-3 py-2 rounded-lg text-sm font-medium border border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors"
           >
             Clear filters
@@ -484,8 +497,7 @@ function ProductionTab() {
 
       {/* Table */}
       <div
-        className="rounded-xl shadow-sm overflow-hidden"
-        style={{ background: 'var(--color-card-bg)', border: '1px solid var(--color-card-border)' }}
+        className="glass-card rounded-xl overflow-hidden"
       >
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -586,8 +598,7 @@ function ReworkTab() {
     <div className="flex flex-col gap-5">
       {/* Info banner */}
       <div
-        className="rounded-xl px-4 py-3 flex items-start gap-3 text-sm"
-        style={{ background: 'var(--color-card-bg)', border: '1px solid var(--color-card-border)' }}
+        className="glass-card rounded-xl px-4 py-3 flex items-start gap-3 text-sm"
       >
         <svg className="w-5 h-5 mt-0.5 flex-shrink-0" style={{ color: 'var(--color-warning, #f59e0b)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -599,8 +610,7 @@ function ReworkTab() {
 
       {/* Table */}
       <div
-        className="rounded-xl shadow-sm overflow-hidden"
-        style={{ background: 'var(--color-card-bg)', border: '1px solid var(--color-card-border)' }}
+        className="glass-card rounded-xl overflow-hidden"
       >
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -679,8 +689,7 @@ function QaSummaryPanel({ failures }: { failures: FailureRow[] }) {
 function SummaryCard({ label, value, color, small }: { label: string; value: string; color: string; small?: boolean }) {
   return (
     <div
-      className="rounded-xl p-4 flex flex-col gap-1 shadow-sm"
-      style={{ background: 'var(--color-card-bg)', border: '1px solid var(--color-card-border)' }}
+      className="glass-card rounded-xl p-4 flex flex-col gap-1"
     >
       <div className="w-1 h-6 rounded-full self-start" style={{ background: color }} />
       <span
@@ -808,8 +817,7 @@ function FailureHistoryTab() {
 
       {/* Filters */}
       <div
-        className="rounded-xl p-4 flex flex-wrap gap-3 items-end"
-        style={{ background: 'var(--color-card-bg)', border: '1px solid var(--color-card-border)' }}
+        className="glass-card rounded-xl p-4 flex flex-wrap gap-3 items-end"
       >
         <FilterField label="Quick select">
           <DatePresets onSelect={(from, to) => setFilters(prev => ({ ...prev, dateFrom: from, dateTo: to }))} />
@@ -859,8 +867,7 @@ function FailureHistoryTab() {
 
       {/* Table */}
       <div
-        className="rounded-xl shadow-sm overflow-hidden"
-        style={{ background: 'var(--color-card-bg)', border: '1px solid var(--color-card-border)' }}
+        className="glass-card rounded-xl overflow-hidden"
       >
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -1036,8 +1043,7 @@ function TamperTestTab() {
     <div className="flex flex-col gap-5">
       {/* Filters */}
       <div
-        className="rounded-xl p-4 flex flex-wrap gap-3 items-end"
-        style={{ background: 'var(--color-card-bg)', border: '1px solid var(--color-card-border)' }}
+        className="glass-card rounded-xl p-4 flex flex-wrap gap-3 items-end"
       >
         <FilterField label="Quick select">
           <DatePresets onSelect={(from, to) => setFilters(prev => ({ ...prev, dateFrom: from, dateTo: to }))} />
@@ -1085,8 +1091,7 @@ function TamperTestTab() {
 
       {/* Table */}
       <div
-        className="rounded-xl shadow-sm overflow-hidden"
-        style={{ background: 'var(--color-card-bg)', border: '1px solid var(--color-card-border)' }}
+        className="glass-card rounded-xl overflow-hidden"
       >
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
