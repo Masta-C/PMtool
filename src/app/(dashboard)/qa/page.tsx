@@ -163,21 +163,23 @@ const tdStyle: React.CSSProperties = {
 // Tab 1: Rework Items
 // ---------------------------------------------------------------------------
 
-function ReworkTab({ from, to }: { from: string; to: string }) {
+function ReworkTab() {
   const [meters, setMeters] = useState<Meter[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     let cancelled = false
     setLoading(true)
-    getMetersByStatus('rework', rangeToDate(from), rangeToDate(to, true))
+    // No date filter — rework is a live status, not a historical record.
+    // A meter tagged for rework today may have been created weeks ago.
+    getMetersByStatus('rework')
       .then((data) => {
         if (!cancelled) setMeters(data)
       })
       .catch(console.error)
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [from, to])
+  }, [])
 
   if (loading) return <LoadingState />
   if (meters.length === 0) return <EmptyState />
@@ -491,7 +493,7 @@ export default function QAPage() {
 
       {/* Tab content */}
       <div className="flex-1 px-4 py-4 max-w-5xl mx-auto w-full">
-        {activeTab === 'rework' && <ReworkTab from={from} to={to} />}
+        {activeTab === 'rework' && <ReworkTab />}
         {activeTab === 'failures' && <FailuresTab from={from} to={to} />}
         {activeTab === 'tamper' && (
           <StageParamTab stageId="stage_08" params={TAMPER_PARAMS} from={from} to={to} />
