@@ -28,7 +28,7 @@
     },
     {
       "collectionGroup": "stageHistory",
-      "queryScope": "COLLECTION",
+      "queryScope": "COLLECTION_GROUP",
       "fields": [
         { "fieldPath": "stageId", "order": "ASCENDING" },
         { "fieldPath": "submittedAt", "order": "DESCENDING" }

@@ -41,13 +41,17 @@ function todayIso(): string {
   return new Date().toISOString().slice(0, 10)
 }
 
-function formatDate(iso: string): string {
-  const d = new Date(iso)
-  return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+function safeToDate(value: unknown): Date {
+  if (typeof value === 'string') return new Date(value)
+  if (value && typeof (value as { toDate?: () => Date }).toDate === 'function') {
+    return (value as { toDate: () => Date }).toDate()
+  }
+  if (value instanceof Date) return value
+  return new Date()
 }
 
-function timeAgo(iso: string): string {
-  const diffMs = Date.now() - new Date(iso).getTime()
+function timeAgo(value: unknown): string {
+  const diffMs = Date.now() - safeToDate(value).getTime()
   const diffMin = Math.floor(diffMs / 60000)
   if (diffMin < 1) return 'just now'
   if (diffMin < 60) return `${diffMin}m ago`
@@ -55,6 +59,10 @@ function timeAgo(iso: string): string {
   if (diffHr < 24) return `${diffHr}h ago`
   const diffDay = Math.floor(diffHr / 24)
   return `${diffDay}d ago`
+}
+
+function formatDate(value: unknown): string {
+  return safeToDate(value).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
 function rangeToDate(dateStr: string, endOfDay = false): Date {
