@@ -78,8 +78,8 @@ interface StageHistoryDoc {
 
 function useDashboardMetrics(
   refreshKey: number,
-  stationFailureView: 'day' | 'month',
-  operatorFailureView: 'day' | 'month',
+  stationFailureView: 'day' | 'week' | 'month',
+  operatorFailureView: 'day' | 'week' | 'month',
 ): DashboardMetrics {
   const { users } = useUsers()
 
@@ -117,6 +117,8 @@ function useDashboardMetrics(
 
     const thirtyDaysAgo = new Date(now)
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+    const sevenDaysAgo = new Date(now)
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
     const thirtyDaysTs = Timestamp.fromDate(thirtyDaysAgo)
 
     // -----------------------------------------------------------------------
@@ -167,7 +169,9 @@ function useDashboardMetrics(
       // --- Station failure rates ---
       const stationPeriodMs = stationFailureView === 'day'
         ? completedTodayMs
-        : thirtyDaysAgo.getTime()
+        : stationFailureView === 'week'
+          ? sevenDaysAgo.getTime()
+          : thirtyDaysAgo.getTime()
 
       const stationReworkMap: Record<string, number> = {}
       for (const h of history) {
@@ -183,7 +187,9 @@ function useDashboardMetrics(
       // --- Operator failure rates ---
       const operatorPeriodMs = operatorFailureView === 'day'
         ? completedTodayMs
-        : thirtyDaysAgo.getTime()
+        : operatorFailureView === 'week'
+          ? sevenDaysAgo.getTime()
+          : thirtyDaysAgo.getTime()
 
       const operatorMap: Record<string, number> = {}
       for (const h of history) {
@@ -406,8 +412,7 @@ interface MetricCardProps {
 function MetricCard({ label, value, subLabel, accentColor, trend }: MetricCardProps) {
   return (
     <div
-      className="rounded-xl p-5 flex flex-col gap-1 shadow-sm"
-      style={{ background: 'var(--color-card-bg)', border: '1px solid var(--color-card-border)' }}
+      className="glass-card rounded-xl p-5 flex flex-col gap-1"
     >
       <div
         className="w-1 h-8 rounded-full mb-1 self-start"
@@ -770,8 +775,8 @@ export default function DashboardPage() {
   const [timeAgoLabel, setTimeAgoLabel] = useState<string>('just now')
   const [refreshKey, setRefreshKey] = useState(0)
   const [throughputView, setThroughputView] = useState<ThroughputView>('month')
-  const [stationFailureView, setStationFailureView] = useState<'day' | 'month'>('day')
-  const [operatorFailureView, setOperatorFailureView] = useState<'day' | 'month'>('day')
+  const [stationFailureView, setStationFailureView] = useState<'day' | 'week' | 'month'>('day')
+  const [operatorFailureView, setOperatorFailureView] = useState<'day' | 'week' | 'month'>('day')
 
   // Update the "N min ago" label every minute — does NOT re-fetch data
   useEffect(() => {
@@ -927,8 +932,7 @@ export default function DashboardPage() {
 
         {/* In Progress by Station */}
         <div
-          className="rounded-xl p-5 shadow-sm flex flex-col gap-3"
-          style={{ background: 'var(--color-card-bg)', border: '1px solid var(--color-card-border)' }}
+          className="glass-card rounded-xl p-5 flex flex-col gap-3"
         >
           <h2 className="text-sm font-semibold text-gray-700">Meters In Progress by Station</h2>
           <p className="text-xs text-gray-400 -mt-2">
@@ -951,8 +955,7 @@ export default function DashboardPage() {
 
         {/* Station vs Failure Rate */}
         <div
-          className="rounded-xl p-5 shadow-sm flex flex-col gap-3"
-          style={{ background: 'var(--color-card-bg)', border: '1px solid var(--color-card-border)' }}
+          className="glass-card rounded-xl p-5 flex flex-col gap-3"
         >
           <div className="flex items-center justify-between gap-2">
             <div>
@@ -960,7 +963,7 @@ export default function DashboardPage() {
               <p className="text-xs text-gray-400">Rework tags originated — corrected reworks included</p>
             </div>
             <div className="flex gap-1 shrink-0">
-              {(['day', 'month'] as const).map(v => (
+              {(['day', 'week', 'month'] as const).map(v => (
                 <button
                   key={v}
                   onClick={() => setStationFailureView(v)}
@@ -969,7 +972,7 @@ export default function DashboardPage() {
                     ? { background: 'var(--color-primary)', color: '#fff', borderColor: 'var(--color-primary)' }
                     : { background: 'transparent', color: '#6b7280', borderColor: '#d1d5db' }}
                 >
-                  {v === 'day' ? 'Today' : 'Month'}
+                  {v === 'day' ? 'Today' : v === 'week' ? 'Week' : 'Month'}
                 </button>
               ))}
             </div>
@@ -998,8 +1001,7 @@ export default function DashboardPage() {
 
         {/* Operator vs Failure Rate */}
         <div
-          className="rounded-xl p-5 shadow-sm flex flex-col gap-3"
-          style={{ background: 'var(--color-card-bg)', border: '1px solid var(--color-card-border)' }}
+          className="glass-card rounded-xl p-5 flex flex-col gap-3"
         >
           <div className="flex items-center justify-between gap-2">
             <div>
@@ -1007,7 +1009,7 @@ export default function DashboardPage() {
               <p className="text-xs text-gray-400">Raw failed count — corrected reworks included</p>
             </div>
             <div className="flex gap-1 shrink-0">
-              {(['day', 'month'] as const).map(v => (
+              {(['day', 'week', 'month'] as const).map(v => (
                 <button
                   key={v}
                   onClick={() => setOperatorFailureView(v)}
@@ -1016,7 +1018,7 @@ export default function DashboardPage() {
                     ? { background: 'var(--color-primary)', color: '#fff', borderColor: 'var(--color-primary)' }
                     : { background: 'transparent', color: '#6b7280', borderColor: '#d1d5db' }}
                 >
-                  {v === 'day' ? 'Today' : 'Month'}
+                  {v === 'day' ? 'Today' : v === 'week' ? 'Week' : 'Month'}
                 </button>
               ))}
             </div>
@@ -1040,8 +1042,7 @@ export default function DashboardPage() {
 
         {/* Throughput line graph */}
         <div
-          className="rounded-xl p-5 shadow-sm flex flex-col gap-3"
-          style={{ background: 'var(--color-card-bg)', border: '1px solid var(--color-card-border)' }}
+          className="glass-card rounded-xl p-5 flex flex-col gap-3"
         >
           <div className="flex items-center justify-between gap-2">
             <div>
