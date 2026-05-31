@@ -19,9 +19,18 @@ function stationIdToStageId(stationId: string): string {
   return stationId.replace('ws_', 'stage_')
 }
 
-/** Format a createdAt ISO string as "Xh Ym ago", "Ym ago", or "just now" */
-function formatTimeAgo(isoString: string): string {
-  const diffMs = Date.now() - new Date(isoString).getTime()
+function safeToDate(value: unknown): Date {
+  if (typeof value === 'string') return new Date(value)
+  if (value && typeof (value as { toDate?: () => Date }).toDate === 'function') {
+    return (value as { toDate: () => Date }).toDate()
+  }
+  if (value instanceof Date) return value
+  return new Date()
+}
+
+/** Format a createdAt value (ISO string or Firestore Timestamp) as "Xh Ym ago" */
+function formatTimeAgo(value: unknown): string {
+  const diffMs = Date.now() - safeToDate(value).getTime()
   const totalMinutes = Math.floor(diffMs / 60_000)
   if (totalMinutes < 1) return 'just now'
   const h = Math.floor(totalMinutes / 60)

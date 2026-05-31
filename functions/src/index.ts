@@ -8,7 +8,7 @@ if (!getApps().length) initializeApp()
 const ADMIN_ROLES = ['admin', 'supervisor']
 const VALID_ROLES = ['admin', 'supervisor', 'operator', 'qa']
 
-export const setUserRole = onCall({ region: 'asia-south1' }, async (request) => {
+export const setUserRole = onCall({ region: 'asia-south1', cors: true }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Must be logged in')
   const callerRole = request.auth.token.role as string
   const { targetUid, role } = request.data
@@ -19,7 +19,7 @@ export const setUserRole = onCall({ region: 'asia-south1' }, async (request) => 
   return { success: true }
 })
 
-export const createUser = onCall({ region: 'asia-south1' }, async (request) => {
+export const createUser = onCall({ region: 'asia-south1', cors: true }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Must be logged in')
   const callerRole = request.auth.token.role as string
   if (!ADMIN_ROLES.includes(callerRole)) throw new HttpsError('permission-denied', 'Insufficient role')
@@ -36,7 +36,7 @@ export const createUser = onCall({ region: 'asia-south1' }, async (request) => {
   return { uid: userRecord.uid }
 })
 
-export const deleteUser = onCall({ region: 'asia-south1' }, async (request) => {
+export const deleteUser = onCall({ region: 'asia-south1', cors: true }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Must be logged in')
   const callerRole = request.auth.token.role as string
   if (!ADMIN_ROLES.includes(callerRole)) throw new HttpsError('permission-denied', 'Insufficient role')
@@ -47,7 +47,7 @@ export const deleteUser = onCall({ region: 'asia-south1' }, async (request) => {
   return { success: true }
 })
 
-export const deleteWorkstation = onCall({ region: 'asia-south1' }, async (request) => {
+export const deleteWorkstation = onCall({ region: 'asia-south1', cors: true }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Must be logged in')
   const callerRole = request.auth.token.role as string
   if (!ADMIN_ROLES.includes(callerRole)) throw new HttpsError('permission-denied', 'Insufficient role')
@@ -58,7 +58,7 @@ export const deleteWorkstation = onCall({ region: 'asia-south1' }, async (reques
   return { success: true }
 })
 
-export const resetUserPassword = onCall({ region: 'asia-south1' }, async (request) => {
+export const resetUserPassword = onCall({ region: 'asia-south1', cors: true }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Must be logged in')
   const callerRole = request.auth.token.role as string
   if (!ADMIN_ROLES.includes(callerRole)) throw new HttpsError('permission-denied', 'Insufficient role')
@@ -70,6 +70,6 @@ export const resetUserPassword = onCall({ region: 'asia-south1' }, async (reques
   return { success: true }
 })
 
-export const healthCheck = onCall({ region: 'asia-south1' }, async () => {
+export const healthCheck = onCall({ region: 'asia-south1', cors: true }, async () => {
   return { status: 'ok', project: 'pmtool-3f8db', phase: 1 }
 })

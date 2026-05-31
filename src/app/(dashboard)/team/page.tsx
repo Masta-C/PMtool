@@ -264,7 +264,7 @@ export default function TeamPage() {
   function getWorkstationLabel(user: AppUser): string {
     const ids = user.workstationIds
     if (!ids || ids.length === 0) return '—'
-    return ids.map(id => stationLabel(id)).join(', ')
+    return ids.map(id => stationLabel(id.replace('ws_', 'stage_'))).join(', ')
   }
 
   // ---------------------------------------------------------------------------
@@ -376,8 +376,7 @@ export default function TeamPage() {
         <p className="text-sm text-gray-400">Loading users…</p>
       ) : (
         <div
-          className="rounded-xl border overflow-hidden"
-          style={{ background: 'var(--color-card-bg)', borderColor: 'var(--color-card-border)' }}
+          className="glass-card rounded-xl overflow-hidden"
         >
           <table className="w-full text-sm">
             <thead>

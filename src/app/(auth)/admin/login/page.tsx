@@ -63,8 +63,8 @@ export default function AdminLoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="w-full max-w-sm bg-white rounded-xl shadow-md p-8">
+    <div className="min-h-screen flex items-center justify-center" style={{ background: 'radial-gradient(ellipse at 15% 40%, rgba(67,97,238,0.13) 0%, transparent 55%), radial-gradient(ellipse at 85% 15%, rgba(139,92,246,0.10) 0%, transparent 55%), radial-gradient(ellipse at 50% 95%, rgba(34,197,94,0.08) 0%, transparent 55%), #eef0f7' }}>
+      <div className="w-full max-w-sm rounded-xl p-8" style={{ background: 'rgba(255,255,255,0.72)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', border: '1px solid rgba(255,255,255,0.85)', boxShadow: '0 4px 24px rgba(67,97,238,0.08), 0 1px 3px rgba(0,0,0,0.05)' }}>
         <h1 className="text-2xl font-bold text-gray-900 mb-1">PMtool</h1>
         <p className="text-sm text-gray-500 mb-6">Admin / Supervisor sign in</p>
 

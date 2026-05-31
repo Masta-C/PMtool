@@ -900,8 +900,9 @@ export default function MeterParameterFormPage() {
       // 2. Clear draft
       await clearDraft(meterId)
 
-      // 3. Route meter to rework target stage
-      await routeToRework(meterId, selectedStageId, currentStageId)
+      // 3. Route meter to rework target stage (pass failed param names so badges show on the rework card)
+      const failedParamNames = parameters.filter(p => !p.passed).map(p => p.name)
+      await routeToRework(meterId, selectedStageId, currentStageId, failedParamNames)
 
       // 4. Navigate back to queue
       router.replace('/operator')

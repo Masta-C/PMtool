@@ -9,10 +9,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   useEffect(() => {
     if (!loading && !user) router.replace('/login')
   }, [user, loading, router])
-  if (loading) return <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--color-content-bg)' }}><div className="text-gray-400 text-sm">Loading...</div></div>
+  if (loading) return <div className="min-h-screen flex items-center justify-center"><div className="text-gray-400 text-sm">Loading...</div></div>
   if (!user) return null
   return (
-    <div className="flex h-screen overflow-hidden" style={{ background: 'var(--color-content-bg)' }}>
+    <div className="flex h-screen overflow-hidden">
       <Sidebar />
       <main className="flex-1 overflow-y-auto">{children}</main>
     </div>

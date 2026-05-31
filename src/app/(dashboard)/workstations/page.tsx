@@ -1,13 +1,15 @@
 'use client'
 
-import { useState, useRef, useCallback, useMemo } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { doc, arrayRemove, writeBatch } from 'firebase/firestore'
 import { db } from '@/lib/firebase/client'
 import { useAuth } from '@/hooks/useAuth'
 import { useUsers } from '@/hooks/useUsers'
 import { stationLabel } from '@/lib/stages'
 import { useMachineStatuses } from '@/hooks/useMachineStatuses'
+import { subscribeMeterQueue, setMachineStatus } from '@/lib/firebase/firestore'
 import type { MachineStatus } from '@/types/workstation'
+import type { Meter } from '@/types/meter'
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -100,28 +102,30 @@ function useOperatorOptions(): { operatorOptions: OperatorOption[]; loading: boo
 }
 
 // ---------------------------------------------------------------------------
-// Stub hook — replace with real Firestore hook once data layer merges
+// Hook — real-time queue counts from Firestore (13 parallel onSnapshot subs)
 // ---------------------------------------------------------------------------
 
 function useStationCounts() {
-  return {
-    counts: {
-      stage_01: { total: 5, reworkCount: 0 },
-      stage_02: { total: 2, reworkCount: 1 },
-      stage_03: { total: 0, reworkCount: 0 },
-      stage_04: { total: 8, reworkCount: 0 },
-      stage_05: { total: 3, reworkCount: 2 },
-      stage_06: { total: 0, reworkCount: 0 },
-      stage_07: { total: 4, reworkCount: 0 },
-      stage_08: { total: 1, reworkCount: 1 },
-      stage_09: { total: 6, reworkCount: 0 },
-      stage_10: { total: 0, reworkCount: 0 },
-      stage_11: { total: 7, reworkCount: 0 },
-      stage_12: { total: 2, reworkCount: 1 },
-      stage_13: { total: 0, reworkCount: 0 },
-    } as Record<string, { total: number; reworkCount: number }>,
-    loading: false,
-  }
+  const [counts, setCounts] = useState<Record<string, { total: number; reworkCount: number }>>(() =>
+    Object.fromEntries(STAGES.map(s => [s.stageId, { total: 0, reworkCount: 0 }]))
+  )
+  const [metersByStage, setMetersByStage] = useState<Record<string, Meter[]>>(() =>
+    Object.fromEntries(STAGES.map(s => [s.stageId, []]))
+  )
+
+  useEffect(() => {
+    const unsubs = STAGES.map(stage =>
+      subscribeMeterQueue(stage.stageId, ['queued', 'rework'], (meters) => {
+        const total = meters.length
+        const reworkCount = meters.filter(m => m.status === 'rework').length
+        setCounts(prev => ({ ...prev, [stage.stageId]: { total, reworkCount } }))
+        setMetersByStage(prev => ({ ...prev, [stage.stageId]: meters }))
+      })
+    )
+    return () => unsubs.forEach(u => u())
+  }, [])
+
+  return { counts, metersByStage }
 }
 
 // ---------------------------------------------------------------------------
@@ -141,46 +145,47 @@ interface ExcelModalState {
   errorMessage: string
 }
 
-interface OrderItem {
-  orderId: string
-  meters: number
-  date: string
-  operator: string
+
+// ---------------------------------------------------------------------------
+// Queue / Rework Modal — real Firestore data
+// ---------------------------------------------------------------------------
+
+/** Safely converts ISO string OR Firestore Timestamp to a JS Date */
+function safeToDate(value: unknown): Date {
+  if (typeof value === 'string') return new Date(value)
+  if (value && typeof (value as { toDate?: () => Date }).toDate === 'function') {
+    return (value as { toDate: () => Date }).toDate()
+  }
+  if (value instanceof Date) return value
+  return new Date()
 }
 
-// ---------------------------------------------------------------------------
-// Mock order data helpers
-// ---------------------------------------------------------------------------
-
-const MOCK_OPERATORS = ['Ravi Kumar', 'Priya Sharma', 'Ankit Verma', 'Sunita Patel', 'Deepak Rao']
-
-function makeMockOrders(stageId: string, count: number, prefix: string): OrderItem[] {
-  const base = parseInt(stageId.replace('stage_', ''), 10) * 100
-  return Array.from({ length: count }, (_, i) => ({
-    orderId: `${prefix}-${String(base + i + 1).padStart(4, '0')}`,
-    meters: 50 + ((base + i * 7) % 200),
-    date: new Date(Date.now() - i * 86_400_000).toLocaleDateString('en-IN', {
-      day: '2-digit', month: 'short', year: 'numeric',
-    }),
-    operator: MOCK_OPERATORS[(base + i) % MOCK_OPERATORS.length],
-  }))
+function formatQueueTimestamp(value: unknown): { date: string; relative: string } {
+  const d = safeToDate(value)
+  const date = d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+  const time = d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
+  const diffMs = Date.now() - d.getTime()
+  const totalMinutes = Math.floor(diffMs / 60_000)
+  let relative = 'just now'
+  if (totalMinutes >= 1) {
+    const h = Math.floor(totalMinutes / 60)
+    const m = totalMinutes % 60
+    relative = h > 0 ? `${h}h ${m}m ago` : `${m}m ago`
+  }
+  return { date: `${date}, ${time}`, relative }
 }
 
-// ---------------------------------------------------------------------------
-// Order List Modal (Queue / Rework)
-// ---------------------------------------------------------------------------
-
-function OrderListModal({
+function MeterQueueModal({
   open,
   title,
   stationName,
-  orders,
+  meters,
   onClose,
 }: {
   open: boolean
   title: string
   stationName: string
-  orders: OrderItem[]
+  meters: Meter[]
   onClose: () => void
 }) {
   if (!open) return null
@@ -189,30 +194,18 @@ function OrderListModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
       <div
         className="rounded-xl shadow-2xl w-full max-w-2xl mx-4 overflow-hidden flex flex-col"
-        style={{ background: 'var(--color-card-bg)', maxHeight: '80vh' }}
+        style={{ background: '#ffffff', maxHeight: '80vh' }}
         role="dialog"
         aria-modal="true"
         aria-label={title}
       >
         {/* Header */}
-        <div
-          className="px-6 py-4 border-b flex items-center justify-between shrink-0"
-          style={{ borderColor: 'var(--color-card-border)' }}
-        >
+        <div className="px-6 py-4 border-b flex items-center justify-between shrink-0" style={{ borderColor: '#e5e7eb' }}>
           <div>
-            <h2 className="text-lg font-semibold" style={{ color: 'var(--color-text-primary)' }}>
-              {title}
-            </h2>
-            <p className="text-sm mt-0.5" style={{ color: 'var(--color-text-secondary)' }}>
-              {stationName}
-            </p>
+            <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
+            <p className="text-sm text-gray-500 mt-0.5">{stationName}</p>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1 rounded transition-colors"
-            style={{ color: 'var(--color-text-secondary)' }}
-            aria-label="Close modal"
-          >
+          <button onClick={onClose} className="p-1 rounded text-gray-400 hover:text-gray-600 transition-colors" aria-label="Close modal">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -220,55 +213,46 @@ function OrderListModal({
         </div>
 
         {/* Body */}
-        <div className="px-6 py-4 overflow-y-auto flex-1">
-          {orders.length === 0 ? (
-            <p className="text-sm py-8 text-center" style={{ color: 'var(--color-text-secondary)' }}>
-              No orders to display.
-            </p>
+        <div className="overflow-y-auto flex-1">
+          {meters.length === 0 ? (
+            <p className="text-sm py-10 text-center text-gray-400">No meters in queue.</p>
           ) : (
             <table className="w-full text-sm border-collapse">
               <thead>
-                <tr style={{ background: 'var(--color-content-bg)' }}>
-                  {['Order #', 'Meters', 'Date', 'Operator'].map(col => (
-                    <th
-                      key={col}
-                      className="text-left px-3 py-2 font-semibold border"
-                      style={{
-                        borderColor: 'var(--color-card-border)',
-                        color: 'var(--color-text-secondary)',
-                      }}
-                    >
+                <tr className="bg-gray-50 border-b border-gray-200">
+                  {['Serial Number', 'Type', 'Status', 'In Queue Since'].map(col => (
+                    <th key={col} className="text-left px-4 py-3 font-semibold text-gray-500 text-xs uppercase tracking-wide">
                       {col}
                     </th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {orders.map((row, idx) => (
-                  <tr key={idx}>
-                    <td
-                      className="px-3 py-2 border font-mono font-medium"
-                      style={{ borderColor: 'var(--color-card-border)', color: 'var(--color-text-primary)' }}
-                    >
-                      {row.orderId}
+                {meters.map((meter, idx) => (
+                  <tr key={meter.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                    <td className="px-4 py-3 font-mono font-semibold text-gray-900">{meter.serialNumber}</td>
+                    <td className="px-4 py-3 text-gray-600">{meter.meterType}</td>
+                    <td className="px-4 py-3">
+                      {meter.status === 'rework' ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-700">
+                          REWORK · Attempt {meter.reworkCount + 1}
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-600">
+                          Queued
+                        </span>
+                      )}
                     </td>
-                    <td
-                      className="px-3 py-2 border"
-                      style={{ borderColor: 'var(--color-card-border)', color: 'var(--color-text-primary)' }}
-                    >
-                      {row.meters}
-                    </td>
-                    <td
-                      className="px-3 py-2 border"
-                      style={{ borderColor: 'var(--color-card-border)', color: 'var(--color-text-secondary)' }}
-                    >
-                      {row.date}
-                    </td>
-                    <td
-                      className="px-3 py-2 border"
-                      style={{ borderColor: 'var(--color-card-border)', color: 'var(--color-text-secondary)' }}
-                    >
-                      {row.operator}
+                    <td className="px-4 py-3">
+                      {(() => {
+                        const { date, relative } = formatQueueTimestamp(meter.createdAt)
+                        return (
+                          <div>
+                            <p className="text-xs text-gray-700 font-medium">{date}</p>
+                            <p className="text-xs text-gray-400 mt-0.5">{relative}</p>
+                          </div>
+                        )
+                      })()}
                     </td>
                   </tr>
                 ))}
@@ -278,18 +262,11 @@ function OrderListModal({
         </div>
 
         {/* Footer */}
-        <div
-          className="px-6 py-4 border-t flex justify-end shrink-0"
-          style={{ borderColor: 'var(--color-card-border)' }}
-        >
+        <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between shrink-0">
+          <span className="text-xs text-gray-400">{meters.length} meter{meters.length !== 1 ? 's' : ''} total</span>
           <button
             onClick={onClose}
-            className="px-4 py-2 text-sm font-medium rounded-lg border transition-colors"
-            style={{
-              borderColor: 'var(--color-card-border)',
-              color: 'var(--color-text-primary)',
-              background: 'transparent',
-            }}
+            className="px-4 py-2 text-sm font-medium text-gray-700 rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors"
           >
             Close
           </button>
@@ -764,7 +741,7 @@ function AddWorkOrdersModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
       <div
         className="rounded-xl shadow-2xl w-full max-w-2xl mx-4 overflow-hidden flex flex-col"
-        style={{ background: 'var(--color-card-bg)', maxHeight: '85vh' }}
+        style={{ background: '#ffffff', maxHeight: '85vh' }}
         role="dialog"
         aria-modal="true"
         aria-label="Add Work Orders"
@@ -1037,6 +1014,21 @@ function StationCard({
     machineStatus === 'red'    ? '#ef4444' :
     'var(--color-card-border)'
 
+  // Active stations are prominent (stronger tint); unknown/inactive are faded
+  const tintBg =
+    machineStatus === 'green'  ? 'rgba(34, 197, 94, 0.14)' :
+    machineStatus === 'yellow' ? 'rgba(234, 179, 8, 0.14)' :
+    machineStatus === 'red'    ? 'rgba(239, 68, 68, 0.14)' :
+    'rgba(255, 255, 255, 0.42)'
+
+  const cardOpacity = machineStatus === null ? 0.6 : 1
+
+  const glowShadow =
+    machineStatus === 'green'  ? '-4px 0 16px rgba(34, 197, 94, 0.35), 0 4px 24px rgba(34, 197, 94, 0.12), 0 1px 3px rgba(0,0,0,0.06)' :
+    machineStatus === 'yellow' ? '-4px 0 16px rgba(234, 179, 8, 0.35), 0 4px 24px rgba(234, 179, 8, 0.12), 0 1px 3px rgba(0,0,0,0.06)' :
+    machineStatus === 'red'    ? '-4px 0 16px rgba(239, 68, 68, 0.35), 0 4px 24px rgba(239, 68, 68, 0.12), 0 1px 3px rgba(0,0,0,0.06)' :
+    '0 2px 8px rgba(0,0,0,0.04), 0 1px 3px rgba(0,0,0,0.03)'
+
   // Save button label
   const saveLabel =
     saveStatus === 'saving' ? 'Saving…' :
@@ -1052,17 +1044,26 @@ function StationCard({
 
   return (
     <div
-      className="bg-white rounded-xl shadow-sm overflow-hidden flex flex-col"
-      style={{ borderLeft: `4px solid ${accentColor}` }}
+      className="rounded-xl overflow-hidden flex flex-col"
+      style={{
+        background: tintBg,
+        backdropFilter: 'blur(12px)',
+        WebkitBackdropFilter: 'blur(12px)',
+        border: '1px solid rgba(255, 255, 255, 0.85)',
+        borderLeft: `4px solid ${accentColor}`,
+        boxShadow: glowShadow,
+        opacity: cardOpacity,
+        transition: 'opacity 0.3s ease, box-shadow 0.3s ease, background 0.3s ease',
+      }}
     >
       <div className="p-5 flex flex-col gap-4 flex-1">
         {/* Header row — #38: replace static badge with clickable pills */}
         <div className="flex items-start justify-between gap-2">
           <div>
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-0.5">
+            <p className="text-xs font-extrabold uppercase tracking-widest text-gray-700 mb-1">
               {stage.stationId.replace('ws_', 'WS').replace('WS0', 'WS')}
             </p>
-            <h3 className="text-sm font-semibold text-gray-800 leading-snug">
+            <h3 className="text-base font-extrabold text-gray-900 leading-tight">
               {stationLabel(stage.stageId).replace(/^\[WS\d+\]\s*/, '')}
             </h3>
           </div>
@@ -1211,7 +1212,7 @@ export default function WorkstationsPage() {
 
 function WorkstationsPageInner() {
   const { role } = useAuth()
-  const { counts } = useStationCounts()
+  const { counts, metersByStage } = useStationCounts()
   const { operatorOptions } = useOperatorOptions()
   const { users } = useUsers()
   const { statuses: machineStatuses } = useMachineStatuses(STAGES.map(s => s.stationId))
@@ -1246,31 +1247,31 @@ function WorkstationsPageInner() {
   // Add Work Orders modal (#36)
   const [addWorkOrdersOpen, setAddWorkOrdersOpen] = useState(false)
 
-  // Queue / Rework order modals
+  // Queue / Rework meter modals — real Firestore data
   const [orderModal, setOrderModal] = useState<{
     open: boolean
     kind: 'queue' | 'rework'
     stageId: string
-    orders: OrderItem[]
-  }>({ open: false, kind: 'queue', stageId: '', orders: [] })
+    meters: Meter[]
+  }>({ open: false, kind: 'queue', stageId: '', meters: [] })
 
-  const openQueueModal = useCallback((stageId: string, total: number) => {
+  const openQueueModal = useCallback((stageId: string) => {
     setOrderModal({
       open: true,
       kind: 'queue',
       stageId,
-      orders: makeMockOrders(stageId, total, 'ORD'),
+      meters: metersByStage[stageId] ?? [],
     })
-  }, [])
+  }, [metersByStage])
 
-  const openReworkModal = useCallback((stageId: string, reworkCount: number) => {
+  const openReworkModal = useCallback((stageId: string) => {
     setOrderModal({
       open: true,
       kind: 'rework',
       stageId,
-      orders: makeMockOrders(stageId, reworkCount, 'RWK'),
+      meters: (metersByStage[stageId] ?? []).filter(m => m.status === 'rework'),
     })
-  }, [])
+  }, [metersByStage])
 
   const closeOrderModal = useCallback(() => {
     setOrderModal(prev => ({ ...prev, open: false }))
@@ -1294,6 +1295,12 @@ function WorkstationsPageInner() {
     setSaveStatuses(prev => ({ ...prev, [stageId]: 'saving' }))
 
     try {
+      // Capture the new operator's CURRENT (old) station BEFORE the batch overwrites it
+      // so we can clear that station's machine status after reassignment
+      const newOpOldStationId = newOp && newOp !== UNASSIGNED_VALUE
+        ? users.find(u => u.uid === newOp)?.workstationIds?.[0]
+        : undefined
+
       const batch = writeBatch(db)
 
       // Step 1: Remove this station from the previous operator
@@ -1311,6 +1318,15 @@ function WorkstationsPageInner() {
 
       await batch.commit()
 
+      // Reset machine status of the target station
+      setMachineStatus(stationId, null).catch(() => {})
+
+      // Also clear the operator's OLD station if they moved from a different one —
+      // otherwise the previous station stays green even though nobody is there
+      if (newOpOldStationId && newOpOldStationId !== stationId) {
+        setMachineStatus(newOpOldStationId, null).catch(() => {})
+      }
+
       // Clear draft on success
       setDraftOperators(prev => {
         const next = { ...prev }
@@ -1327,7 +1343,7 @@ function WorkstationsPageInner() {
       console.error('Failed to save operator assignment', e)
       setSaveStatuses(prev => ({ ...prev, [stageId]: 'error' }))
     }
-  }, [savedOperators, draftOperators])
+  }, [savedOperators, draftOperators, users])
 
   // Returns the station name the drafted operator is already assigned to (if any)
   const getConflictStation = useCallback((stageId: string): string | null => {
@@ -1388,8 +1404,8 @@ function WorkstationsPageInner() {
                 machineStatus={machineStatuses[stage.stationId] ?? null}
                 pendingMeters={stage.stageId === 'stage_01' ? pendingMeters : []}
                 onAddWorkOrders={() => setAddWorkOrdersOpen(true)}
-                onQueueBadgeClick={() => openQueueModal(stage.stageId, count.total)}
-                onReworkBadgeClick={() => openReworkModal(stage.stageId, count.reworkCount)}
+                onQueueBadgeClick={() => openQueueModal(stage.stageId)}
+                onReworkBadgeClick={() => openReworkModal(stage.stageId)}
                 readOnly={role === 'admin' || role === 'supervisor'}
               />
             )
@@ -1405,11 +1421,11 @@ function WorkstationsPageInner() {
         onCancel={() => setAddWorkOrdersOpen(false)}
       />
 
-      <OrderListModal
+      <MeterQueueModal
         open={orderModal.open}
-        title={orderModal.kind === 'queue' ? 'Queued Orders' : 'Rework Orders'}
+        title={orderModal.kind === 'queue' ? 'Queued Meters' : 'Rework Meters'}
         stationName={orderModal.stageId ? stationLabel(orderModal.stageId) : ''}
-        orders={orderModal.orders}
+        meters={orderModal.meters}
         onClose={closeOrderModal}
       />
     </div>

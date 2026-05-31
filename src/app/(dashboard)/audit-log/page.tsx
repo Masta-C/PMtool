@@ -289,7 +289,7 @@ function AuditLogContent({ canExport }: { canExport: boolean }) {
       </div>
 
       {/* Filter bar */}
-      <div className="bg-white border border-gray-200 rounded-xl p-4 mb-6 flex flex-wrap gap-3 items-end shadow-sm">
+      <div className="glass-card rounded-xl p-4 mb-6 flex flex-wrap gap-3 items-end">
         {/* Serial number search */}
         <div className="flex-1 min-w-[180px]">
           <label className="block text-xs font-medium text-gray-600 mb-1">Serial Number</label>
@@ -371,7 +371,7 @@ function AuditLogContent({ canExport }: { canExport: boolean }) {
       </div>
 
       {/* Log table */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+      <div className="glass-card rounded-xl overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>

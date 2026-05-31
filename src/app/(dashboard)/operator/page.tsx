@@ -153,8 +153,17 @@ function useCompletedToday(operatorId: string | undefined): number {
 // Queue hooks + components (inlined so home screen shows queue directly)
 // ---------------------------------------------------------------------------
 
-function formatTimeAgo(isoString: string): string {
-  const diffMs = Date.now() - new Date(isoString).getTime()
+function safeToDate(value: unknown): Date {
+  if (typeof value === 'string') return new Date(value)
+  if (value && typeof (value as { toDate?: () => Date }).toDate === 'function') {
+    return (value as { toDate: () => Date }).toDate()
+  }
+  if (value instanceof Date) return value
+  return new Date()
+}
+
+function formatTimeAgo(value: unknown): string {
+  const diffMs = Date.now() - safeToDate(value).getTime()
   const totalMinutes = Math.floor(diffMs / 60_000)
   if (totalMinutes < 1) return 'just now'
   const h = Math.floor(totalMinutes / 60)
@@ -383,6 +392,26 @@ export default function OperatorPage() {
 
   if (authLoading || stationLoading) return <div className="p-10 text-gray-400 text-sm">Loading…</div>
   if (role && role !== 'operator') return null
+
+  // No station assigned — show a clear full-page message, skip everything else
+  if (!stationLoading && !stationId) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--color-content-bg)' }}>
+        <div className="max-w-sm w-full mx-4 rounded-2xl p-8 text-center flex flex-col items-center gap-4"
+          style={{ background: 'var(--color-card-bg)', border: '1px solid var(--color-card-border)' }}>
+          <div className="w-14 h-14 rounded-full flex items-center justify-center" style={{ background: 'rgba(107,114,128,0.1)' }}>
+            <svg className="w-7 h-7 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18" />
+            </svg>
+          </div>
+          <div>
+            <p className="text-base font-bold text-gray-800">No station assigned</p>
+            <p className="text-sm text-gray-500 mt-1">You have not been assigned to a workstation yet. Contact your supervisor to get assigned before starting your shift.</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   const isActive = operatorStatus === 'active'
   const isGated = operatorStatus === null
